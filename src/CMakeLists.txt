@@ -5,7 +5,7 @@ target_include_directories(nvconv PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
 target_compile_definitions(nvconv PRIVATE 
-  NEUT_VERSION_STR="5.5.0"
+  NEUT_VERSION_STR="${NEUT_VERSION}"
   PROJECT_VERSION_STR="${PROJECT_VERSION}")
 
 set_target_properties(nvconv PROPERTIES 
