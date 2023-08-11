@@ -32,5 +32,7 @@ CPMAddPackage(
       "HEPMC3_BUILD_STATIC_LIBS ON"
 )
 
+find_package(ZLIB)
+
 add_subdirectory(src)
 add_subdirectory(app)

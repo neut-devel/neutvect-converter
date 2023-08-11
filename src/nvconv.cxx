@@ -324,6 +324,7 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section) {
   add_attribute(run_info, "NuHepMC.ParticleStatusIDs",
                 std::vector<int>{ParticleStatus::kUndecayedPhysicalParticle,
                                  ParticleStatus::kDecayedParticle,
+                                 ParticleStatus::kDocumentationLine,
                                  ParticleStatus::kIncomingBeamParticle,
                                  ParticleStatus::kTargetParticle,
                                  ParticleStatus::kPauliBlocked,
@@ -342,7 +343,6 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section) {
                     "G.C.1",
                     "G.C.2",
                     "G.C.4"
-                    "E.C.1",
                     "E.C.4",
                     "E.C.2",
                 });

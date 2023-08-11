@@ -1,20 +1,24 @@
+#include "TChain.h"
 #include "TFile.h"
 #include "TH1D.h"
-#include "TTree.h"
-
-#include "neutvect.h"
 
 #include "nvconv.h"
 
 #include "HepMC3/WriterAscii.h"
+#ifdef HEPMC3_USE_COMPRESSION
+#include "HepMC3/WriterGZ.h"
+#endif
 
 #include <iostream>
 
-std::string file_to_read;
+std::vector<std::string> files_to_read;
 std::string file_to_write;
 
 std::string flux_file;
 std::string flux_hist;
+#ifdef HEPMC3_USE_COMPRESSION
+bool WriteGZ = false;
+#endif
 
 bool flux_in_GeV = false;
 double monoE = 0;
@@ -24,12 +28,15 @@ Long64_t nmaxevents = std::numeric_limits<Long64_t>::max();
 void SayUsage(char const *argv[]) {
   std::cout
       << "[USAGE]: " << argv[0] << "\n"
-      << "\t-i <neutvect.root>       : neutvect file to read\n"
-      << "\t-N <NMax>                : Process at most <NMax> events\n"
-      << "\t-o <neut.hepmc3>         : hepmc3 file to write\n"
-      << "\t-f <flux_file,flux_hist> : ROOT flux histogram to use to\n"
-      << "\t-G                       : -f argument should be interpreted as "
-         "being in GeV\n"
+      << "\t-i <nv.root> [nv2.root ...]  : neutvect file to read\n"
+      << "\t-N <NMax>                    : Process at most <NMax> events\n"
+      << "\t-o <neut.hepmc3>             : hepmc3 file to write\n"
+#ifdef HEPMC3_USE_COMPRESSION
+      << "\t-z                           : write out in compressed ASCII\n"
+#endif
+      << "\t-f <flux_file,flux_hist>     : ROOT flux histogram to use to\n"
+      << "\t-G                           : -f argument should be interpreted "
+         "as being in GeV\n"
       << std::endl;
 }
 
@@ -43,17 +50,23 @@ void handleOpts(int argc, char const *argv[]) {
       flux_in_GeV = true;
       std::cout << "[INFO]: Assuming input flux histogram is in GeV."
                 << std::endl;
+    } else if (std::string(argv[opt]) == "-z") {
+      WriteGZ = true;
+      std::cout << "[INFO]: Writing output compressed output file."
+                << std::endl;
     } else if ((opt + 1) < argc) {
       if (std::string(argv[opt]) == "-i") {
-        file_to_read = argv[++opt];
-        std::cout << "[INFO]: Reading from " << file_to_read << std::endl;
+        while (((opt + 1) < argc) && (argv[opt + 1][0] != '-')) {
+          files_to_read.push_back(argv[++opt]);
+          std::cout << "[INFO]: Reading from " << files_to_read.back()
+                    << std::endl;
+        }
       } else if (std::string(argv[opt]) == "-N") {
         nmaxevents = std::stol(argv[++opt]);
         std::cout << "[INFO]: Processing at most " << nmaxevents << " events."
                   << std::endl;
       } else if (std::string(argv[opt]) == "-o") {
         file_to_write = argv[++opt];
-        std::cout << "[INFO]: Writing to " << file_to_write << std::endl;
       } else if (std::string(argv[opt]) == "-f") {
         std::string arg = argv[++opt];
         flux_file = arg.substr(0, arg.find_first_of(','));
@@ -70,15 +83,16 @@ void handleOpts(int argc, char const *argv[]) {
   }
 }
 
-double GetFATX(TFile *fin, TTree *tin, NeutVect *nv) {
+double GetFATX(TFile *fin, TChain &chin, NeutVect *nv) {
 
-  Long64_t ents = tin->GetEntries();
+  Long64_t ents = chin.GetEntries();
+  chin.GetEntry(0);
 
   // check if it is mono-energetic
   double first_E = 0;
   bool isMonoE = true;
   for (Long64_t i = 0; i < std::min(1000ll, ents); ++i) {
-    tin->GetEntry(i);
+    chin.GetEntry(i);
     if (!i) {
       first_E = nv->PartInfo(0)->fP.E();
     } else if (std::fabs(first_E - nv->PartInfo(0)->fP.E()) > 1E-6) {
@@ -124,7 +138,7 @@ double GetFATX(TFile *fin, TTree *tin, NeutVect *nv) {
     entryhisto->Reset();
 
     for (Long64_t i = 0; i < ents; ++i) {
-      tin->GetEntry(i);
+      chin.GetEntry(i);
       double E = nv->PartInfo(0)->fP.E() * (flux_in_GeV ? 1E-3 : 1);
       xsechisto->Fill(E, nv->Totcrs);
       entryhisto->Fill(E);
@@ -169,50 +183,72 @@ int main(int argc, char const *argv[]) {
 
   handleOpts(argc, argv);
 
-  if (!file_to_read.length() || !file_to_write.length()) {
+  if (!files_to_read.size() || !file_to_write.length()) {
     std::cout << "[ERROR]: Expected -i and -o arguments." << std::endl;
     return 1;
   }
 
-  TFile *fin = TFile::Open(file_to_read.c_str(), "READ");
-  if (!fin) {
-    std::cout << "[ERROR]: Failed to read input file: " << argv[1] << std::endl;
-    return 1;
+#ifdef HEPMC3_USE_COMPRESSION
+  if (WriteGZ && (file_to_write.substr(file_to_write.size() - 4, 3) !=
+                  std::string(".gz"))) {
+    file_to_write = file_to_write + ".gz";
+  }
+  std::cout << "[INFO]: Writing to " << file_to_write << std::endl;
+#endif
+
+  TChain chin("neuttree");
+
+  for (auto const &ftr : files_to_read) {
+    if (!chin.Add(ftr.c_str(), 0)) {
+      std::cout << "[ERROR]: Failed to find tree: \"neuttree\" in file: \""
+                << ftr << "\"." << std::endl;
+      return 1;
+    }
   }
 
-  TTree *tin = fin->Get<TTree>("neuttree");
-  if (!tin) {
-    std::cout << "[ERROR]: Failed to read input tree: neuttree, from file: "
-              << argv[1] << std::endl;
-    return 1;
-  }
+  Long64_t ents = chin.GetEntries();
+  chin.GetEntry(
+      0); // need to do this before opening the other file or... kablamo
 
   NeutVect *nv = nullptr;
-  tin->SetBranchAddress("vectorbranch", &nv);
+  auto branch_status = chin.SetBranchAddress("vectorbranch", &nv);
 
-  Long64_t ents = tin->GetEntries();
   Long64_t ents_to_run = std::min(ents, nmaxevents);
 
-  double fatx = GetFATX(fin, tin, nv) * (double(ents_to_run) / double(ents));
+  auto first_file = std::unique_ptr<TFile>(
+      TFile::Open(files_to_read.front().c_str(), "READ"));
+
+  double fatx = GetFATX(first_file.get(), chin, nv) *
+                (double(ents)/double(ents_to_run));
+  first_file->Close();
+  first_file = nullptr;
 
   auto gri = BuildRunInfo(ents_to_run, fatx);
-  HepMC3::WriterAscii output(file_to_write.c_str(), gri);
+  HepMC3::Writer *output =
+#ifdef HEPMC3_USE_COMPRESSION
+      WriteGZ ? static_cast<HepMC3::Writer *>(
+                    new HepMC3::WriterGZ<HepMC3::WriterAscii>(
+                        file_to_write.c_str(), gri))
+              :
+#endif
+              static_cast<HepMC3::Writer *>(
+                  new HepMC3::WriterAscii(file_to_write.c_str(), gri));
 
-  tin->GetEntry(0);
+  chin.GetEntry(0);
 
-  if (output.failed()) {
+  if (output->failed()) {
     return 2;
   }
 
   for (Long64_t i = 0; i < ents_to_run; ++i) {
-    tin->GetEntry(i);
+    chin.GetEntry(i);
     if (i && (ents_to_run / 100) && !(i % (ents_to_run / 100))) {
       std::cout << "\rConverting " << i << "/" << ents_to_run << std::flush;
     }
-    output.write_event(ToGenEvent(nv, gri));
+    output->write_event(ToGenEvent(nv, gri));
   }
   std::cout << "\rConverting " << ents_to_run << "/" << ents_to_run
             << std::endl;
 
-  output.close();
+  output->close();
 }
