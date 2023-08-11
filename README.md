@@ -25,6 +25,7 @@ $ neutvect-converter -?
   -N <NMax>                : Process at most <NMax> events
   -o <neut.hepmc3>         : hepmc3 file to write
   -f <flux_file,flux_hist> : ROOT flux histogram to use to
+  -z                       : Write to .gz compress ASCII file
   -G                       : -f argument should be interpreted as being in GeV
 ```
 
