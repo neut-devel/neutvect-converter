@@ -1,40 +1,27 @@
 #pragma once
 
-#include "HepMC3/GenEvent.h"
 #include "neutvect.h"
 
-namespace NEUTNuHepMC {
+#include "HepMC3/GenEvent.h"
 
-namespace VertexStatus {
-// NuHepMC standard vertex codes
-const int kPrimaryVertex = 1;
-const int kNuclearTargetVertex = 2;
+#include "TH1.h"
 
-// NEUT Extended codes
-const int kFSIVertex = 3;
-} // namespace VertexStatus
+namespace NuHepMC {
 
 namespace ParticleStatus {
-// HepMC3 standard vertex codes
-const int kUndecayedPhysicalParticle = 1;
-const int kDecayedParticle = 2;
-const int kDocumentationLine = 3;
-const int kIncomingBeamParticle = 4;
-
-// NuHepMC standard vertex codes
-const int kTargetParticle = 11;
-
-// P.C.1
-const int kStruckNucleon = 21;
-
 // NEUT Extended codes
-const int kPauliBlocked = 31;
-const int kUnderwentFSI = 41;
-const int kSecondaryInteraction = 99;
+namespace NEUT {
+const int PauliBlocked = 31;
+const int UnderwentFSI = 41;
+const int SecondaryInteraction = 99;
+} // namespace NEUT
 } // namespace ParticleStatus
 
-} // namespace NEUTNuHepMC
+} // namespace NuHepMC
 
 std::shared_ptr<HepMC3::GenRunInfo>
-BuildRunInfo(int nevents, double flux_averaged_total_cross_section = 1);
-HepMC3::GenEvent ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri);
+BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
+             TH1 *&flux_histo, bool &isMonoE, int beam_pid,
+             double flux_to_MeV = 1);
+HepMC3::GenEvent ToGenEvent(NeutVect *nv,
+                            std::shared_ptr<HepMC3::GenRunInfo> gri);

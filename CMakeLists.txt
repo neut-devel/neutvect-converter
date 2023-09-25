@@ -14,25 +14,12 @@ LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 
 include(CPM)
 CPMAddPackage(
-    NAME HepMC3
-    VERSION 3.2.6
-    GIT_REPOSITORY "https://gitlab.cern.ch/hepmc/HepMC3.git"
-    GIT_TAG 3.2.6
-    OPTIONS
-      "HEPMC3_CXX_STANDARD ${CMAKE_CXX_STANDARD}"
-      "HEPMC3_ENABLE_SEARCH OFF"
-      "HEPMC3_ENABLE_ROOTIO OFF"
-      "HEPMC3_ENABLE_PROTOBUFIO OFF"
-      "HEPMC3_ENABLE_PYTHON OFF"
-      "HEPMC3_BUILD_DOCS OFF"
-      "HEPMC3_BUILD_EXAMPLES OFF"
-      "HEPMC3_INSTALL_EXAMPLES OFF"
-      "HEPMC3_ENABLE_TEST OFF"
-      "HEPMC3_INSTALL_INTERFACES OFF"
-      "HEPMC3_BUILD_STATIC_LIBS ON"
+    NAME NuHepMC_CPPUtils
+    VERSION 0.9.0
+    GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
+    GIT_TAG main
+    OPTIONS "BUILTIN_HEPMC3 ON"
 )
-
-find_package(ZLIB)
 
 add_subdirectory(src)
 add_subdirectory(app)

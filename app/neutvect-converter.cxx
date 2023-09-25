@@ -4,10 +4,8 @@
 
 #include "nvconv.h"
 
-#include "HepMC3/WriterAscii.h"
-#ifdef HEPMC3_USE_COMPRESSION
-#include "HepMC3/WriterGZ.h"
-#endif
+#include "NuHepMC/Common.hxx"
+#include "NuHepMC/make_writer.hxx"
 
 #include <iostream>
 
@@ -16,12 +14,10 @@ std::string file_to_write;
 
 std::string flux_file;
 std::string flux_hist;
-#ifdef HEPMC3_USE_COMPRESSION
-bool WriteGZ = false;
-#endif
 
 bool flux_in_GeV = false;
 double monoE = 0;
+Long64_t skip = 0;
 
 Long64_t nmaxevents = std::numeric_limits<Long64_t>::max();
 
@@ -31,13 +27,10 @@ void SayUsage(char const *argv[]) {
       << "\t-i <nv.root> [nv2.root ...]  : neutvect file to read\n"
       << "\t-N <NMax>                    : Process at most <NMax> events\n"
       << "\t-o <neut.hepmc3>             : hepmc3 file to write\n"
-#ifdef HEPMC3_USE_COMPRESSION
-      << "\t-z                           : write out in compressed ASCII\n"
-#endif
       << "\t-f <flux_file,flux_hist>     : ROOT flux histogram to use to\n"
       << "\t-G                           : -f argument should be interpreted "
          "as being in GeV\n"
-      << std::endl;
+      << "\t-s <N>                        : Skip <N>." << std::endl;
 }
 
 void handleOpts(int argc, char const *argv[]) {
@@ -50,10 +43,6 @@ void handleOpts(int argc, char const *argv[]) {
       flux_in_GeV = true;
       std::cout << "[INFO]: Assuming input flux histogram is in GeV."
                 << std::endl;
-    } else if (std::string(argv[opt]) == "-z") {
-      WriteGZ = true;
-      std::cout << "[INFO]: Writing output compressed output file."
-                << std::endl;
     } else if ((opt + 1) < argc) {
       if (std::string(argv[opt]) == "-i") {
         while (((opt + 1) < argc) && (argv[opt + 1][0] != '-')) {
@@ -64,6 +53,10 @@ void handleOpts(int argc, char const *argv[]) {
       } else if (std::string(argv[opt]) == "-N") {
         nmaxevents = std::stol(argv[++opt]);
         std::cout << "[INFO]: Processing at most " << nmaxevents << " events."
+                  << std::endl;
+      } else if (std::string(argv[opt]) == "-s") {
+        skip = std::stol(argv[++opt]);
+        std::cout << "[INFO]: Skipping " << skip << " events before processing."
                   << std::endl;
       } else if (std::string(argv[opt]) == "-o") {
         file_to_write = argv[++opt];
@@ -83,28 +76,34 @@ void handleOpts(int argc, char const *argv[]) {
   }
 }
 
-double GetFATX(TFile *fin, TChain &chin, NeutVect *nv) {
+double GetFATX(TFile *fin, TChain &chin, NeutVect *nv, TH1 *&flux_histo,
+               bool &isMonoE, int &beam_pid, double &flux_energy_to_MeV) {
+
+  // reset it so that the caller knows if it comes back set, it was set by this
+  // call
+  flux_histo = nullptr;
 
   Long64_t ents = chin.GetEntries();
   chin.GetEntry(0);
 
   // check if it is mono-energetic
   double first_E = 0;
-  bool isMonoE = true;
+  isMonoE = true;
   for (Long64_t i = 0; i < std::min(1000ll, ents); ++i) {
     chin.GetEntry(i);
     if (!i) {
       first_E = nv->PartInfo(0)->fP.E();
+      beam_pid = nv->PartInfo(0)->fPID;
     } else if (std::fabs(first_E - nv->PartInfo(0)->fP.E()) > 1E-6) {
       isMonoE = false;
     }
   }
 
   if (isMonoE) {
-    double fatx = nv->Totcrs * 1E-38 / double(ents);
+    double fatx = nv->Totcrs * 1E-2;
     std::cout << "[INFO]: Calculated FATX/event from Totcrs for assumed "
                  "mono-energetic file: "
-              << fatx << std::endl;
+              << fatx << " pb/Nucleon" << std::endl;
     return fatx;
   }
 
@@ -120,28 +119,37 @@ double GetFATX(TFile *fin, TChain &chin, NeutVect *nv) {
       abort();
     }
 
-    TH1 *fluxhisto = flux_fin->Get<TH1>(flux_hist.c_str());
-    if (!fluxhisto) {
+    flux_histo = flux_fin->Get<TH1>(flux_hist.c_str());
+    if (!flux_histo) {
       std::cout << "[ERROR]: When trying to determine flux-average total cross "
                    "section, failed to get "
                 << flux_hist << " from " << flux_file << std::endl;
       abort();
     }
 
+    flux_histo = static_cast<TH1 *>(flux_histo->Clone("fluxhisto_clone"));
+    flux_histo->SetDirectory(nullptr);
+
     std::unique_ptr<TH1> xsechisto(
-        static_cast<TH1 *>(fluxhisto->Clone("xsechisto")));
+        static_cast<TH1 *>(flux_histo->Clone("xsechisto")));
     xsechisto->SetDirectory(nullptr);
     xsechisto->Reset();
     std::unique_ptr<TH1> entryhisto(
-        static_cast<TH1 *>(fluxhisto->Clone("entryhisto")));
+        static_cast<TH1 *>(flux_histo->Clone("entryhisto")));
     entryhisto->SetDirectory(nullptr);
     entryhisto->Reset();
 
     for (Long64_t i = 0; i < ents; ++i) {
       chin.GetEntry(i);
-      double E = nv->PartInfo(0)->fP.E() * (flux_in_GeV ? 1E-3 : 1);
-      xsechisto->Fill(E, nv->Totcrs);
-      entryhisto->Fill(E);
+      double E_flux_units = nv->PartInfo(0)->fP.E() * (flux_in_GeV ? 1E-3 : 1);
+      xsechisto->Fill(E_flux_units, nv->Totcrs);
+      entryhisto->Fill(E_flux_units);
+    }
+
+    if (flux_in_GeV) {
+      flux_energy_to_MeV = 1E3;
+    } else {
+      flux_energy_to_MeV = 1;
     }
 
     xsechisto->Divide(entryhisto.get());
@@ -150,29 +158,29 @@ double GetFATX(TFile *fin, TChain &chin, NeutVect *nv) {
         static_cast<TH1 *>(xsechisto->Clone("ratehisto")));
     ratehisto->SetDirectory(nullptr);
 
-    ratehisto->Multiply(fluxhisto);
+    ratehisto->Multiply(flux_histo);
 
-    double fatx = 1E-38 * (ratehisto->Integral() /
-                           (fluxhisto->Integral() * double(ents)));
+    double fatx = 1E-2 * (ratehisto->Integral() / flux_histo->Integral());
 
     flux_fin->Close();
 
     std::cout << "[INFO]: Calculated FATX/event from input file file as: "
-              << fatx << std::endl;
+              << fatx << " pb/Nucleon" << std::endl;
     return fatx;
   }
 
   // Have the histos already
   if (fin->Get<TH1D>("ratehisto") && fin->Get<TH1D>("fluxhisto")) {
     TH1D *ratehisto = fin->Get<TH1D>("ratehisto");
-    TH1D *fluxhisto = fin->Get<TH1D>("fluxhisto");
+    flux_histo = static_cast<TH1 *>(
+        fin->Get<TH1D>("fluxhisto")->Clone("fluxhisto_clone"));
+    flux_histo->SetDirectory(nullptr);
 
-    double fatx = 1E-38 * (ratehisto->Integral() /
-                           (fluxhisto->Integral() * double(ents)));
+    double fatx = 1E-2 * (ratehisto->Integral() / flux_histo->Integral());
 
     std::cout
         << "[INFO]: Calculated FATX/event from histograms in input file as: "
-        << fatx << std::endl;
+        << fatx << " pb/Nucleon" << std::endl;
     return fatx;
   }
 
@@ -187,14 +195,6 @@ int main(int argc, char const *argv[]) {
     std::cout << "[ERROR]: Expected -i and -o arguments." << std::endl;
     return 1;
   }
-
-#ifdef HEPMC3_USE_COMPRESSION
-  if (WriteGZ && (file_to_write.substr(file_to_write.size() - 4, 3) !=
-                  std::string(".gz"))) {
-    file_to_write = file_to_write + ".gz";
-  }
-  std::cout << "[INFO]: Writing to " << file_to_write << std::endl;
-#endif
 
   TChain chin("neuttree");
 
@@ -215,37 +215,66 @@ int main(int argc, char const *argv[]) {
 
   Long64_t ents_to_run = std::min(ents, nmaxevents);
 
+  if (skip >= ents) {
+    std::cout << "Skipping " << skip << ", but only have " << ents
+              << " in the input file." << std::endl;
+    return 1;
+  }
+
   auto first_file = std::unique_ptr<TFile>(
       TFile::Open(files_to_read.front().c_str(), "READ"));
 
-  double fatx = GetFATX(first_file.get(), chin, nv) *
-                (double(ents)/double(ents_to_run));
+  TH1 *flux_histo = nullptr;
+  bool isMonoE = false;
+  int beam_pid = 0;
+
+  double flux_energy_to_MeV = 1E3;
+  double fatx = GetFATX(first_file.get(), chin, nv, flux_histo, isMonoE,
+                        beam_pid, flux_energy_to_MeV);
   first_file->Close();
   first_file = nullptr;
 
-  auto gri = BuildRunInfo(ents_to_run, fatx);
-  HepMC3::Writer *output =
-#ifdef HEPMC3_USE_COMPRESSION
-      WriteGZ ? static_cast<HepMC3::Writer *>(
-                    new HepMC3::WriterGZ<HepMC3::WriterAscii>(
-                        file_to_write.c_str(), gri))
-              :
-#endif
-              static_cast<HepMC3::Writer *>(
-                  new HepMC3::WriterAscii(file_to_write.c_str(), gri));
-
   chin.GetEntry(0);
+
+  auto gri = BuildRunInfo(ents_to_run, fatx * (nv->TargetA + nv->TargetH),
+                          flux_histo, isMonoE, beam_pid, flux_energy_to_MeV);
+
+  std::unique_ptr<HepMC3::Writer> output(
+      NuHepMC::Writer::make_writer(file_to_write, gri));
 
   if (output->failed()) {
     return 2;
   }
 
-  for (Long64_t i = 0; i < ents_to_run; ++i) {
+  Long64_t fentry = skip;
+  TUUID fuid;
+  std::string fname;
+  for (Long64_t i = skip; i < (ents_to_run + skip); ++i) {
+    if (i >= ents) {
+      break;
+    }
     chin.GetEntry(i);
+
+    if (i == skip) {
+      fuid = chin.GetFile()->GetUUID();
+      fname = chin.GetFile()->GetName();
+    } else if (chin.GetFile()->GetUUID() != fuid) {
+      fuid = chin.GetFile()->GetUUID();
+      fname = chin.GetFile()->GetName();
+      fentry = 0;
+    }
+
     if (i && (ents_to_run / 100) && !(i % (ents_to_run / 100))) {
       std::cout << "\rConverting " << i << "/" << ents_to_run << std::flush;
     }
-    output->write_event(ToGenEvent(nv, gri));
+
+    auto hepev = ToGenEvent(nv, gri);
+
+    hepev.set_event_number(ents);
+    NuHepMC::add_attribute(hepev, "ifile.name", fname);
+    NuHepMC::add_attribute(hepev, "ifile.entry", fentry++);
+
+    output->write_event(hepev);
   }
   std::cout << "\rConverting " << ents_to_run << "/" << ents_to_run
             << std::endl;

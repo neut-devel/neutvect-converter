@@ -1,6 +1,6 @@
 add_library(nvconv STATIC nvconv.cxx)
 
-target_link_libraries(nvconv PUBLIC NEUT::IO HepMC3::All_static ROOT::RIO)
+target_link_libraries(nvconv PUBLIC NEUT::IO NuHepMC::CPPUtils_static ROOT::RIO)
 target_include_directories(nvconv PUBLIC 
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
