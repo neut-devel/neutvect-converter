@@ -4,6 +4,10 @@ target_link_libraries(nvconv PUBLIC NEUT::IO NuHepMC::CPPUtils_static ROOT::RIO)
 target_include_directories(nvconv PUBLIC 
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  target_compile_definitions(nvconv PRIVATE NEUTCONV_DEBUG)
+endif()
+
 target_compile_definitions(nvconv PRIVATE 
   NEUT_VERSION_STR="${NEUT_VERSION}"
   PROJECT_VERSION_STR="${PROJECT_VERSION}")

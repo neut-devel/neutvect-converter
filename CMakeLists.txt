@@ -19,6 +19,7 @@ CPMAddPackage(
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
     GIT_TAG main
     OPTIONS "BUILTIN_HEPMC3 ON"
+            "NuHepMC_BUILD_STATIC_LIBS ON"
 )
 
 add_subdirectory(src)

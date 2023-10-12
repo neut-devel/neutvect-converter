@@ -4,6 +4,9 @@
 
 #include "HepMC3/GenParticle.h"
 #include "HepMC3/GenVertex.h"
+#ifdef NEUTCONV_DEBUG
+#include "HepMC3/Print.h"
+#endif
 
 #include <set>
 #include <utility>
@@ -117,6 +120,41 @@ int GetEC1Channel(int neutmode) {
   return ChannelNameIndexModeMapping.at(neutmode).second;
 }
 
+void AddNEUTPassthrough(HepMC3::GenEvent &evt,
+                        std::vector<HepMC3::GenParticlePtr> &parts,
+                        NeutVect *nv) {
+
+  NuHepMC::add_attribute(evt, "NEUT.TargetA", nv->TargetA);
+  NuHepMC::add_attribute(evt, "NEUT.TargetZ", nv->TargetZ);
+  NuHepMC::add_attribute(evt, "NEUT.TargetH", nv->TargetH);
+  NuHepMC::add_attribute(evt, "NEUT.Ibound", nv->Ibound);
+  NuHepMC::add_attribute(evt, "NEUT.VNuclIni", nv->VNuclIni);
+  NuHepMC::add_attribute(evt, "NEUT.VNuclFin", nv->VNuclFin);
+  NuHepMC::add_attribute(evt, "NEUT.PFSurf", nv->PFSurf);
+  NuHepMC::add_attribute(evt, "NEUT.PFMax", nv->PFMax);
+  NuHepMC::add_attribute(evt, "NEUT.QEModel", nv->QEModel);
+  NuHepMC::add_attribute(evt, "NEUT.QEVForm", nv->QEVForm);
+  NuHepMC::add_attribute(evt, "NEUT.RADcorr", nv->RADcorr);
+  NuHepMC::add_attribute(evt, "NEUT.SPIModel", nv->SPIModel);
+  NuHepMC::add_attribute(evt, "NEUT.COHModel", nv->COHModel);
+  NuHepMC::add_attribute(evt, "NEUT.DISModel", nv->DISModel);
+  NuHepMC::add_attribute(evt, "NEUT.Mode", nv->Mode);
+
+  NeutPart *pinfo = nullptr;
+  int npart = nv->Npart();
+  int nprimary = nv->Nprimary();
+
+  NuHepMC::add_attribute(evt, "NEUT.npart", npart);
+  NuHepMC::add_attribute(evt, "NEUT.nprimary", nprimary);
+
+  for (int i = 0; i < npart; ++i) {
+    pinfo = nv->PartInfo(i);
+    NuHepMC::add_attribute(parts[i], "NEUT.i", i);
+    NuHepMC::add_attribute(parts[i], "NEUT.fStatus", pinfo->fStatus);
+    NuHepMC::add_attribute(parts[i], "NEUT.fIsAlive", pinfo->fIsAlive);
+  }
+}
+
 std::shared_ptr<HepMC3::GenRunInfo>
 BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
              TH1 *&flux_histo, bool &isMonoE, int beam_pid,
@@ -137,7 +175,6 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
                                    "github.com/neut-dev/neutvect-converter"});
 
   // G.R.4 Process Metadata
-
   std::vector<int> pids;
   for (auto const &neutchan : ChannelNameIndexModeMapping) {
     pids.push_back(neutchan.second.second);
@@ -205,14 +242,16 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
 
   // G.C.1 Signalling Followed Conventions
   std::vector<std::string> conventions = {
-      "G.C.1", "G.C.2", "G.C.4", "G.C.5", "E.C.1", "E.C.2", "E.C.3",
+      "G.C.1", "G.C.2", "G.C.4", "G.C.5", "E.C.1",
+      "E.C.2", "V.C.1", "P.C.1", "P.C.2",
   };
 
   // G.C.2 File Exposure (Standalone)
   NuHepMC::GC2::SetExposureNEvents(run_info, nevents);
 
   // G.C.4 Cross Section Units and Target Scaling
-  NuHepMC::GC4::SetCrossSectionUnits(run_info, "pb", "PerTargetMolecule");
+  NuHepMC::GC4::SetCrossSectionUnits(run_info, "pb",
+                                     "PerTargetMolecularNucleon");
 
   // G.C.5 Flux-averaged Total Cross Section
   NuHepMC::GC5::SetFluxAveragedTotalXSec(run_info,
@@ -222,19 +261,14 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
     conventions.push_back("G.C.7");
 
     if (isMonoE) {
-      NuHepMC::add_attribute(
-          run_info, "NuHepMC.Beam[" + std::to_string(beam_pid) + "].Type",
-          "MonoEnergetic");
 
-      NuHepMC::add_attribute(
-          run_info, "NuHepMC.Beam[" + std::to_string(beam_pid) + "].EnergyUnit",
-          "MEV");
+      NuHepMC::GC7::WriteBeamUnits(run_info, "MEV");
+      NuHepMC::GC7::SetMonoEnergeticBeamType(run_info);
 
     } else {
-      NuHepMC::add_attribute(
-          run_info, "NuHepMC.Beam[" + std::to_string(beam_pid) + "].Type",
-          "Histogram");
 
+      NuHepMC::GC7::SetHistogramBeamType(run_info);
+      
       std::vector<double> bin_edges;
       std::vector<double> bin_content;
 
@@ -246,30 +280,10 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
         bin_content.push_back(flux_histo->GetBinContent(i + 1));
       }
 
-      NuHepMC::add_attribute(run_info,
-                             "NuHepMC.Beam[" + std::to_string(beam_pid) +
-                                 "].Histogram.BinEdges",
-                             bin_edges);
-
-      NuHepMC::add_attribute(
-          run_info, "NuHepMC.Beam[" + std::to_string(beam_pid) + "].EnergyUnit",
-          "MEV");
-
-      if (std::string(flux_histo->GetYaxis()->GetTitle()).size()) {
-        NuHepMC::add_attribute(
-            run_info, "NuHepMC.Beam[" + std::to_string(beam_pid) + "].RateUnit",
-            flux_histo->GetYaxis()->GetTitle());
-      }
-
-      NuHepMC::add_attribute<bool>(run_info,
-                                   "NuHepMC.Beam[" + std::to_string(beam_pid) +
-                                       "].Histogram.ContentIsPerWidth",
-                                   false);
-
-      NuHepMC::add_attribute(run_info,
-                             "NuHepMC.Beam[" + std::to_string(beam_pid) +
-                                 "].Histogram.BinContent",
-                             bin_content);
+      NuHepMC::GC7::WriteBeamEnergyHistogram(run_info, beam_pid, bin_edges,
+                                             bin_content, false);
+      NuHepMC::GC7::WriteBeamUnits(
+          run_info, "MEV", std::string(flux_histo->GetYaxis()->GetTitle()));
     }
   }
 
@@ -281,6 +295,11 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
 
 HepMC3::GenEvent ToGenEvent(NeutVect *nv,
                             std::shared_ptr<HepMC3::GenRunInfo> gri) {
+
+#ifdef NEUTCONV_DEBUG
+  std::cout << ">>>>>>>>>>>>>>>ToGenEvent" << std::endl;
+  nv->Dump();
+#endif
 
   HepMC3::GenEvent evt(HepMC3::Units::MEV, HepMC3::Units::CM);
   evt.set_run_info(gri);
@@ -305,7 +324,21 @@ HepMC3::GenEvent ToGenEvent(NeutVect *nv,
       HepMC3::FourVector{0, 0, 0, 0}, nuclear_PDG,
       NuHepMC::ParticleStatus::Target);
 
+  int nuclear_remnant_PDG = nuclear_PDG;
+  HepMC3::GenParticlePtr nuclear_remnant_internal =
+      std::make_shared<HepMC3::GenParticle>(
+          HepMC3::FourVector{0, 0, 0, 0},
+          NuHepMC::ParticleNumber::NuclearRemnant,
+          NuHepMC::ParticleStatus::DocumentationLine);
+
+  HepMC3::GenParticlePtr nuclear_remnant_external =
+      std::make_shared<HepMC3::GenParticle>(
+          HepMC3::FourVector{0, 0, 0, 0},
+          NuHepMC::ParticleNumber::NuclearRemnant,
+          NuHepMC::ParticleStatus::UndecayedPhysical);
+
   IAVertex->add_particle_in(target_nucleus);
+  IAVertex->add_particle_out(nuclear_remnant_internal);
 
   // E.R.5
   HepMC3::GenVertexPtr primvertex =
@@ -315,10 +348,17 @@ HepMC3::GenEvent ToGenEvent(NeutVect *nv,
   HepMC3::GenVertexPtr fsivertex =
       std::make_shared<HepMC3::GenVertex>(HepMC3::FourVector{});
   fsivertex->set_status(NuHepMC::VertexStatus::FSISummary);
+  fsivertex->add_particle_in(nuclear_remnant_internal);
+  fsivertex->add_particle_out(nuclear_remnant_external);
 
   NeutPart *pinfo = nullptr;
   int npart = nv->Npart();
   int nprimary = nv->Nprimary();
+
+  // need to keep this stack so that we can add metadata attributes after we
+  // have added them to the event.
+  std::vector<HepMC3::GenParticlePtr> parts;
+
   for (int i = 0; i < npart; ++i) {
     pinfo = nv->PartInfo(i);
 
@@ -419,28 +459,71 @@ HepMC3::GenEvent ToGenEvent(NeutVect *nv,
     HepMC3::GenParticlePtr part = std::make_shared<HepMC3::GenParticle>(
         HepMC3::FourVector{fmom.X(), fmom.Y(), fmom.Z(), fmom.E()}, pinfo->fPID,
         NuHepPartStatus);
+    parts.push_back(part);
     part->set_generated_mass(fmom.M());
+
+#ifdef NEUTCONV_DEBUG
+    std::cout << "Processing NEUT particle(" << i << "/" << npart
+              << ", nprim:" << nprimary << ") pid: " << pinfo->fPID
+              << ", status: " << pinfo->fStatus
+              << " isalive: " << pinfo->fIsAlive << std::endl;
+    std::cout << "\t->NuHepPartStatus: " << NuHepPartStatus << std::endl;
+#endif
 
     if (NuHepPartStatus == NuHepMC::ParticleStatus::IncomingBeam) {
       primvertex->add_particle_in(part);
+#ifdef NEUTCONV_DEBUG
+      std::cout << "\t->Added as /in/ to primvertex" << std::endl;
+#endif
     } else if (NuHepPartStatus == NuHepMC::ParticleStatus::StruckNucleon) {
       primvertex->add_particle_in(part);
       IAVertex->add_particle_out(part);
+
+      if (part->pid() == 2212) {
+        nuclear_remnant_PDG -= (1 * 10000 + 1 * 10);
+      } else {
+        nuclear_remnant_PDG -= (0 * 10000 + 1 * 10);
+      }
+
+#ifdef NEUTCONV_DEBUG
+      std::cout << "\t->Added as /out/ from IAvertex" << std::endl;
+      std::cout << "\t->Added as /in/ to primvertex" << std::endl;
+#endif
     } else if (NuHepPartStatus == NuHepMC::ParticleStatus::UndecayedPhysical) {
       if (isprim) {
-        primvertex->add_particle_out(part);
-      } else {
-        fsivertex->add_particle_out(part);
+        auto part_copy = std::make_shared<HepMC3::GenParticle>(part->data());
+        part_copy->set_status(NuHepMC::ParticleStatus::DocumentationLine);
+        primvertex->add_particle_out(part_copy);
+        fsivertex->add_particle_in(part_copy);
+#ifdef NEUTCONV_DEBUG
+        std::cout << "\t->Copied particle with status: "
+                  << NuHepMC::ParticleStatus::DocumentationLine << std::endl;
+        std::cout << "\t\t->Added as /out/ from primvertex" << std::endl;
+        std::cout << "\t\t->Added as /in/ to fsivertex" << std::endl;
+#endif
       }
+      fsivertex->add_particle_out(part);
+#ifdef NEUTCONV_DEBUG
+      std::cout << "\t->Added as /out/ from fsivertex" << std::endl;
+#endif
     } else if ((NuHepPartStatus == NuHepMC::ParticleStatus::DecayedPhysical) ||
                (NuHepPartStatus ==
                 NuHepMC::ParticleStatus::NEUT::PauliBlocked) ||
                (NuHepPartStatus ==
                 NuHepMC::ParticleStatus::NEUT::SecondaryInteraction)) {
       primvertex->add_particle_out(part);
+      fsivertex->add_particle_in(part);
+#ifdef NEUTCONV_DEBUG
+      std::cout << "\t->Added as /out/ from primvertex" << std::endl;
+      std::cout << "\t->Added as /in/ to fsivertex" << std::endl;
+#endif
     } else if (NuHepPartStatus == NuHepMC::ParticleStatus::NEUT::UnderwentFSI) {
       primvertex->add_particle_out(part);
       fsivertex->add_particle_in(part);
+#ifdef NEUTCONV_DEBUG
+      std::cout << "\t->Added as /out/ from primvertex" << std::endl;
+      std::cout << "\t->Added as /in/ to fsivertex" << std::endl;
+#endif
     } else {
       std::cout << "[ERROR]: Failed to find vertex for particle: " << (i + 1)
                 << std::endl;
@@ -448,21 +531,14 @@ HepMC3::GenEvent ToGenEvent(NeutVect *nv,
     }
   }
 
-  if (!fsivertex->particles_in().size() && fsivertex->particles_out().size()) {
-    // add a dummy documentation line connecting this vertex to the primary one
-    HepMC3::GenParticlePtr doc_line = std::make_shared<HepMC3::GenParticle>(
-        HepMC3::FourVector{0, 0, 0, 0}, 0,
-        NuHepMC::ParticleStatus::DocumentationLine);
-    primvertex->add_particle_out(doc_line);
-    fsivertex->add_particle_in(doc_line);
+  if (!fsivertex->particles_in().size()) {
+    throw std::runtime_error(
+        "neutvect-converter: [ERROR]: fsivertex had no incoming particles.");
   }
 
   evt.add_vertex(IAVertex);
   evt.add_vertex(primvertex);
-
-  if (fsivertex->particles_in().size() || fsivertex->particles_out().size()) {
-    evt.add_vertex(fsivertex);
-  }
+  evt.add_vertex(fsivertex);
 
   // E.C.1
   evt.weight("CV") = 1;
@@ -471,30 +547,21 @@ HepMC3::GenEvent ToGenEvent(NeutVect *nv,
   static double const cm2_to_pb = 1E36;
 
   // E.C.2
-  NuHepMC::EC2::SetTotalCrossSection(evt, nv->Totcrs * 1E-38 * cm2_to_pb *
-                                              (nv->TargetA + nv->TargetH));
+  NuHepMC::EC2::SetTotalCrossSection(evt, nv->Totcrs * 1E-38 * cm2_to_pb);
+  // E.R.5
+  NuHepMC::ER5::SetLabPosition(evt, std::vector<double>{0, 0, 0, 0});
 
-  // A semi random selection of properties that should exist in the last few
-  // versions of NEUT
-  NuHepMC::add_attribute(evt, "TargetA", nv->TargetA);
-  NuHepMC::add_attribute(evt, "TargetZ", nv->TargetZ);
-  NuHepMC::add_attribute(evt, "TargetH", nv->TargetH);
-  NuHepMC::add_attribute(evt, "Ibound", nv->Ibound);
-  NuHepMC::add_attribute(evt, "VNuclIni", nv->VNuclIni);
-  NuHepMC::add_attribute(evt, "VNuclFin", nv->VNuclFin);
-  NuHepMC::add_attribute(evt, "PFSurf", nv->PFSurf);
-  NuHepMC::add_attribute(evt, "PFMax", nv->PFMax);
-  NuHepMC::add_attribute(evt, "QEModel", nv->QEModel);
-  NuHepMC::add_attribute(evt, "QEVForm", nv->QEVForm);
-  NuHepMC::add_attribute(evt, "RADcorr", nv->RADcorr);
-  NuHepMC::add_attribute(evt, "SPIModel", nv->SPIModel);
-  NuHepMC::add_attribute(evt, "COHModel", nv->COHModel);
-  NuHepMC::add_attribute(evt, "DISModel", nv->DISModel);
+  NuHepMC::ER3::SetProcessID(evt, GetEC1Channel(nv->Mode));
 
-  // E.R.4
-  NuHepMC::ER4::SetLabPosition(evt, std::vector<double>{0, 0, 0, 0});
+  NuHepMC::PC2::SetRemnantParticleNumber(nuclear_remnant_internal,
+                                         nuclear_remnant_PDG);
 
-  NuHepMC::ER2::SetProcessID(evt, GetEC1Channel(nv->Mode));
+  AddNEUTPassthrough(evt, parts, nv);
+
+#ifdef NEUTCONV_DEBUG
+  HepMC3::Print::listing(evt);
+  std::cout << "<<<<<<<<<<<<<<<ToGenEvent" << std::endl;
+#endif
 
   return evt;
 }

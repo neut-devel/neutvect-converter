@@ -4,7 +4,7 @@
 
 #include "nvconv.h"
 
-#include "NuHepMC/Common.hxx"
+#include "NuHepMC/AttributeUtils.hxx"
 #include "NuHepMC/make_writer.hxx"
 
 #include <iostream>
@@ -30,7 +30,7 @@ void SayUsage(char const *argv[]) {
       << "\t-f <flux_file,flux_hist>     : ROOT flux histogram to use to\n"
       << "\t-G                           : -f argument should be interpreted "
          "as being in GeV\n"
-      << "\t-s <N>                        : Skip <N>." << std::endl;
+      << "\t-s <N>                       : Skip <N>." << std::endl;
 }
 
 void handleOpts(int argc, char const *argv[]) {
@@ -66,6 +66,10 @@ void handleOpts(int argc, char const *argv[]) {
         flux_hist = arg.substr(arg.find_first_of(',') + 1);
         std::cout << "[INFO]: Reading flux information from " << flux_file
                   << ":" << flux_hist << std::endl;
+      } else {
+        std::cout << "[ERROR]: Unknown option: " << argv[opt] << std::endl;
+        SayUsage(argv);
+        exit(1);
       }
     } else {
       std::cout << "[ERROR]: Unknown option: " << argv[opt] << std::endl;
@@ -213,13 +217,14 @@ int main(int argc, char const *argv[]) {
   NeutVect *nv = nullptr;
   auto branch_status = chin.SetBranchAddress("vectorbranch", &nv);
 
-  Long64_t ents_to_run = std::min(ents, nmaxevents);
-
   if (skip >= ents) {
     std::cout << "Skipping " << skip << ", but only have " << ents
               << " in the input file." << std::endl;
     return 1;
   }
+
+  Long64_t ents_to_run = std::min(ents, skip + nmaxevents);
+  Long64_t ents_to_process = ents_to_run - skip;
 
   auto first_file = std::unique_ptr<TFile>(
       TFile::Open(files_to_read.front().c_str(), "READ"));
@@ -236,8 +241,11 @@ int main(int argc, char const *argv[]) {
 
   chin.GetEntry(0);
 
-  auto gri = BuildRunInfo(ents_to_run, fatx * (nv->TargetA + nv->TargetH),
-                          flux_histo, isMonoE, beam_pid, flux_energy_to_MeV);
+  int molecule_A = nv->TargetA;
+  int molecule_H = nv->TargetH;
+
+  auto gri = BuildRunInfo(ents_to_run, fatx, flux_histo, isMonoE, beam_pid,
+                          flux_energy_to_MeV);
 
   std::unique_ptr<HepMC3::Writer> output(
       NuHepMC::Writer::make_writer(file_to_write, gri));
@@ -246,16 +254,16 @@ int main(int argc, char const *argv[]) {
     return 2;
   }
 
-  Long64_t fentry = skip;
-  TUUID fuid;
-  std::string fname;
-  for (Long64_t i = skip; i < (ents_to_run + skip); ++i) {
+  Long64_t fentry = 0;
+  TUUID fuid = chin.GetFile()->GetUUID();
+  std::string fname = chin.GetFile()->GetName();
+  for (Long64_t i = 0; i < ents_to_run; ++i) {
     if (i >= ents) {
       break;
     }
     chin.GetEntry(i);
 
-    if (i == skip) {
+    if (i == 0) {
       fuid = chin.GetFile()->GetUUID();
       fname = chin.GetFile()->GetName();
     } else if (chin.GetFile()->GetUUID() != fuid) {
@@ -264,8 +272,21 @@ int main(int argc, char const *argv[]) {
       fentry = 0;
     }
 
-    if (i && (ents_to_run / 100) && !(i % (ents_to_run / 100))) {
-      std::cout << "\rConverting " << i << "/" << ents_to_run << std::flush;
+    if (i < skip) { // we have to manually skip them to work out the correct
+                    // file indexing
+      fentry++;
+      continue;
+    }
+
+    if ((molecule_A != nv->TargetA) || (molecule_H != nv->TargetH)) {
+      std::cout << "neutvect-converter cannot currently convert to NuHepMC for "
+                   "multi-target event vectors."
+                << std::endl;
+      return 1;
+    }
+
+    if (i && (ents_to_process / 100) && !(i % (ents_to_process / 100))) {
+      std::cout << "\rConverting " << i << "/" << ents_to_process << std::flush;
     }
 
     auto hepev = ToGenEvent(nv, gri);
@@ -276,7 +297,7 @@ int main(int argc, char const *argv[]) {
 
     output->write_event(hepev);
   }
-  std::cout << "\rConverting " << ents_to_run << "/" << ents_to_run
+  std::cout << "\rConverting " << ents_to_process << "/" << ents_to_process
             << std::endl;
 
   output->close();
