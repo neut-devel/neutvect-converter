@@ -109,6 +109,9 @@ double GetFATX(TFile *fin, TChain &chin, NeutVect *nv, TH1 *&flux_histo,
                  "mono-energetic file: "
               << fatx << " pb/Nucleon" << std::endl;
     return fatx;
+  } else {
+    std::cout << "[INFO]: Not Mono E, so cannot infer FATX from first event."
+              << std::endl;
   }
 
   // if we have a flux file then we can build it
@@ -171,13 +174,16 @@ double GetFATX(TFile *fin, TChain &chin, NeutVect *nv, TH1 *&flux_histo,
     std::cout << "[INFO]: Calculated FATX/event from input file file as: "
               << fatx << " pb/Nucleon" << std::endl;
     return fatx;
+  } else {
+    std::cout << "[INFO]: Was not passed a flux file to calculat FATX"
+              << std::endl;
   }
 
   // Have the histos already
-  if (fin->Get<TH1D>("ratehisto") && fin->Get<TH1D>("fluxhisto")) {
-    TH1D *ratehisto = fin->Get<TH1D>("ratehisto");
+  if (fin->Get<TH1>("ratehisto") && fin->Get<TH1>("fluxhisto")) {
+    TH1 *ratehisto = fin->Get<TH1>("ratehisto");
     flux_histo = static_cast<TH1 *>(
-        fin->Get<TH1D>("fluxhisto")->Clone("fluxhisto_clone"));
+        fin->Get<TH1>("fluxhisto")->Clone("fluxhisto_clone"));
     flux_histo->SetDirectory(nullptr);
 
     double fatx = 1E-2 * (ratehisto->Integral() / flux_histo->Integral());
@@ -186,6 +192,9 @@ double GetFATX(TFile *fin, TChain &chin, NeutVect *nv, TH1 *&flux_histo,
         << "[INFO]: Calculated FATX/event from histograms in input file as: "
         << fatx << " pb/Nucleon" << std::endl;
     return fatx;
+  } else {
+    std::cout << "[INFO]: Cannot find ratehisto and fluxhisto in input file."
+              << std::endl;
   }
 
   return 1;
@@ -291,7 +300,7 @@ int main(int argc, char const *argv[]) {
 
     auto hepev = ToGenEvent(nv, gri);
 
-    hepev.set_event_number(ents);
+    hepev.set_event_number(i);
     NuHepMC::add_attribute(hepev, "ifile.name", fname);
     NuHepMC::add_attribute(hepev, "ifile.entry", fentry++);
 
