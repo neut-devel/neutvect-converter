@@ -15,7 +15,7 @@ std::string file_to_write;
 std::string flux_file;
 std::string flux_hist;
 
-bool flux_in_GeV = false;
+bool flux_in_GeV = true;
 double monoE = 0;
 Long64_t skip = 0;
 
@@ -28,8 +28,8 @@ void SayUsage(char const *argv[]) {
       << "\t-N <NMax>                    : Process at most <NMax> events\n"
       << "\t-o <neut.hepmc3>             : hepmc3 file to write\n"
       << "\t-f <flux_file,flux_hist>     : ROOT flux histogram to use to\n"
-      << "\t-G                           : -f argument should be interpreted "
-         "as being in GeV\n"
+      << "\t-M                           : -f argument should be interpreted "
+         "as being in MeV\n"
       << "\t-s <N>                       : Skip <N>." << std::endl;
 }
 
@@ -39,8 +39,8 @@ void handleOpts(int argc, char const *argv[]) {
     if (std::string(argv[opt]) == "-?" || std::string(argv[opt]) == "--help") {
       SayUsage(argv);
       exit(0);
-    } else if (std::string(argv[opt]) == "-G") {
-      flux_in_GeV = true;
+    } else if (std::string(argv[opt]) == "-M") {
+      flux_in_GeV = false;
       std::cout << "[INFO]: Assuming input flux histogram is in GeV."
                 << std::endl;
     } else if ((opt + 1) < argc) {
