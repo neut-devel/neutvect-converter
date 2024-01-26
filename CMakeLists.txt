@@ -15,7 +15,6 @@ LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 include(CPM)
 CPMFindPackage(
     NAME NuHepMC_CPPUtils
-    VERSION 0.9.0
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
     GIT_TAG main
     OPTIONS "BUILTIN_HEPMC3 ON"
