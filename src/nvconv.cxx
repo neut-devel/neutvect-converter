@@ -4,12 +4,15 @@
 
 #include "HepMC3/GenParticle.h"
 #include "HepMC3/GenVertex.h"
+
 #ifdef NEUTCONV_DEBUG
 #include "HepMC3/Print.h"
 #endif
 
 #include <set>
 #include <utility>
+
+namespace nvconv {
 
 static const double GeV = 1E-3;
 static const double MeV = 1;
@@ -157,7 +160,7 @@ void AddNEUTPassthrough(HepMC3::GenEvent &evt,
 
 std::shared_ptr<HepMC3::GenRunInfo>
 BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
-             TH1 *&flux_histo, bool &isMonoE, int beam_pid,
+             std::unique_ptr<TH1> &flux_hist, bool &isMonoE, int beam_pid,
              double flux_to_MeV) {
 
   // G.R.1 Valid GenRunInfo
@@ -242,12 +245,15 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
 
   // G.C.1 Signalling Followed Conventions
   std::vector<std::string> conventions = {
-      "G.C.1", "G.C.2", "G.C.4", "G.C.5", "E.C.1",
+      "G.C.1", "G.C.4", "G.C.5", "E.C.1",
       "E.C.2", "V.C.1", "P.C.1", "P.C.2",
   };
 
   // G.C.2 File Exposure (Standalone)
-  NuHepMC::GC2::SetExposureNEvents(run_info, nevents);
+  if(nevents){
+    NuHepMC::GC2::SetExposureNEvents(run_info, nevents);
+    conventions.push_back("G.C.2");
+  }
 
   // G.C.4 Cross Section Units and Target Scaling
   NuHepMC::GC4::SetCrossSectionUnits(run_info, "pb",
@@ -257,7 +263,7 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
   NuHepMC::GC5::SetFluxAveragedTotalXSec(run_info,
                                          flux_averaged_total_cross_section);
 
-  if (flux_histo || isMonoE) {
+  if (flux_hist || isMonoE) {
     conventions.push_back("G.C.7");
 
     if (isMonoE) {
@@ -268,22 +274,22 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
     } else {
 
       NuHepMC::GC7::SetHistogramBeamType(run_info);
-      
+
       std::vector<double> bin_edges;
       std::vector<double> bin_content;
 
-      bin_edges.push_back(flux_histo->GetXaxis()->GetBinLowEdge(1) *
+      bin_edges.push_back(flux_hist->GetXaxis()->GetBinLowEdge(1) *
                           flux_to_MeV);
-      for (int i = 0; i < flux_histo->GetXaxis()->GetNbins(); ++i) {
-        bin_edges.push_back(flux_histo->GetXaxis()->GetBinUpEdge(i + 1) *
+      for (int i = 0; i < flux_hist->GetXaxis()->GetNbins(); ++i) {
+        bin_edges.push_back(flux_hist->GetXaxis()->GetBinUpEdge(i + 1) *
                             flux_to_MeV);
-        bin_content.push_back(flux_histo->GetBinContent(i + 1));
+        bin_content.push_back(flux_hist->GetBinContent(i + 1));
       }
 
       NuHepMC::GC7::WriteBeamEnergyHistogram(run_info, beam_pid, bin_edges,
                                              bin_content, false);
       NuHepMC::GC7::WriteBeamUnits(
-          run_info, "MEV", std::string(flux_histo->GetYaxis()->GetTitle()));
+          run_info, "MEV", std::string(flux_hist->GetYaxis()->GetTitle()));
     }
   }
 
@@ -565,3 +571,4 @@ HepMC3::GenEvent ToGenEvent(NeutVect *nv,
 
   return evt;
 }
+} // namespace nvconv

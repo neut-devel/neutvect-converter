@@ -13,7 +13,7 @@ find_package(NEUT 5.5.0 REQUIRED)
 LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 
 include(CPM)
-CPMAddPackage(
+CPMFindPackage(
     NAME NuHepMC_CPPUtils
     VERSION 0.9.0
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"

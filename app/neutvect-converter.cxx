@@ -3,6 +3,7 @@
 #include "TH1D.h"
 
 #include "nvconv.h"
+#include "nvfatxtools.h"
 
 #include "NuHepMC/AttributeUtils.hxx"
 #include "NuHepMC/make_writer.hxx"
@@ -12,8 +13,8 @@
 std::vector<std::string> files_to_read;
 std::string file_to_write;
 
-std::string flux_file;
-std::string flux_hist;
+std::string flux_file = "";
+std::string flux_histname = "";
 
 bool flux_in_GeV = true;
 double monoE = 0;
@@ -27,7 +28,7 @@ void SayUsage(char const *argv[]) {
       << "\t-i <nv.root> [nv2.root ...]  : neutvect file to read\n"
       << "\t-N <NMax>                    : Process at most <NMax> events\n"
       << "\t-o <neut.hepmc3>             : hepmc3 file to write\n"
-      << "\t-f <flux_file,flux_hist>     : ROOT flux histogram to use to\n"
+      << "\t-f <flux_file,flux_histname>     : ROOT flux histogram to use to\n"
       << "\t-M                           : -f argument should be interpreted "
          "as being in MeV\n"
       << "\t-s <N>                       : Skip <N>." << std::endl;
@@ -41,7 +42,7 @@ void handleOpts(int argc, char const *argv[]) {
       exit(0);
     } else if (std::string(argv[opt]) == "-M") {
       flux_in_GeV = false;
-      std::cout << "[INFO]: Assuming input flux histogram is in GeV."
+      std::cout << "[INFO]: Assuming input flux histogram is in MeV."
                 << std::endl;
     } else if ((opt + 1) < argc) {
       if (std::string(argv[opt]) == "-i") {
@@ -63,9 +64,9 @@ void handleOpts(int argc, char const *argv[]) {
       } else if (std::string(argv[opt]) == "-f") {
         std::string arg = argv[++opt];
         flux_file = arg.substr(0, arg.find_first_of(','));
-        flux_hist = arg.substr(arg.find_first_of(',') + 1);
+        flux_histname = arg.substr(arg.find_first_of(',') + 1);
         std::cout << "[INFO]: Reading flux information from " << flux_file
-                  << ":" << flux_hist << std::endl;
+                  << ":" << flux_histname << std::endl;
       } else {
         std::cout << "[ERROR]: Unknown option: " << argv[opt] << std::endl;
         SayUsage(argv);
@@ -80,121 +81,61 @@ void handleOpts(int argc, char const *argv[]) {
   }
 }
 
-double GetFATX(TFile *fin, TChain &chin, NeutVect *nv, TH1 *&flux_histo,
-               bool &isMonoE, int &beam_pid, double &flux_energy_to_MeV) {
+double GetFATX(TFile *fin, TChain &chin, NeutVect *nv,
+               std::unique_ptr<TH1> &flux_hist, bool &isMonoE, int &beam_pid,
+               double &flux_energy_to_MeV) {
 
   // reset it so that the caller knows if it comes back set, it was set by this
   // call
-  flux_histo = nullptr;
+  flux_hist = nullptr;
 
   Long64_t ents = chin.GetEntries();
   chin.GetEntry(0);
+  beam_pid = nv->PartInfo(0)->fPID;
 
-  // check if it is mono-energetic
-  double first_E = 0;
-  isMonoE = true;
-  for (Long64_t i = 0; i < std::min(1000ll, ents); ++i) {
-    chin.GetEntry(i);
-    if (!i) {
-      first_E = nv->PartInfo(0)->fP.E();
-      beam_pid = nv->PartInfo(0)->fPID;
-    } else if (std::fabs(first_E - nv->PartInfo(0)->fP.E()) > 1E-6) {
-      isMonoE = false;
-    }
-  }
-
+  isMonoE = nvconv::isMono(chin, nv);
   if (isMonoE) {
+    chin.GetEntry(0);
     double fatx = nv->Totcrs * 1E-2;
-    std::cout << "[INFO]: Calculated FATX/event from Totcrs for assumed "
+    std::cout << "[INFO]: Calculated FATX from Totcrs for assumed "
                  "mono-energetic file: "
               << fatx << " pb/Nucleon" << std::endl;
     return fatx;
   } else {
-    std::cout << "[INFO]: Not Mono E, so cannot infer FATX from first event."
-              << std::endl;
+    std::cout
+        << "[INFO]: Not mono-energetic, so cannot infer FATX from first event."
+        << std::endl;
   }
+
+  flux_hist = nvconv::GetHistFromFile(flux_file, flux_histname);
 
   // if we have a flux file then we can build it
-  if (flux_file.length() && flux_hist.length()) {
-
-    std::unique_ptr<TFile> flux_fin(TFile::Open(flux_file.c_str(), "READ"));
-
-    if (!flux_fin || !flux_fin->IsOpen() || flux_fin->IsZombie()) {
-      std::cout << "[ERROR]: When trying to determine flux-average total cross "
-                   "section, failed to open "
-                << flux_file << std::endl;
-      abort();
+  if (flux_hist) {
+    auto fatx_opt =
+        nvconv::GetFATXFromFluxHist(chin, nv, flux_hist, flux_in_GeV);
+    if (fatx_opt) {
+      if (flux_in_GeV) {
+        flux_energy_to_MeV = 1E3;
+      } else {
+        flux_energy_to_MeV = 1;
+      }
+      std::cout << "[INFO]: Calculated FATX from input file file as: "
+                << fatx_opt.value() << " pb/Nucleon" << std::endl;
+      return fatx_opt.value();
     }
-
-    flux_histo = flux_fin->Get<TH1>(flux_hist.c_str());
-    if (!flux_histo) {
-      std::cout << "[ERROR]: When trying to determine flux-average total cross "
-                   "section, failed to get "
-                << flux_hist << " from " << flux_file << std::endl;
-      abort();
-    }
-
-    flux_histo = static_cast<TH1 *>(flux_histo->Clone("fluxhisto_clone"));
-    flux_histo->SetDirectory(nullptr);
-
-    std::unique_ptr<TH1> xsechisto(
-        static_cast<TH1 *>(flux_histo->Clone("xsechisto")));
-    xsechisto->SetDirectory(nullptr);
-    xsechisto->Reset();
-    std::unique_ptr<TH1> entryhisto(
-        static_cast<TH1 *>(flux_histo->Clone("entryhisto")));
-    entryhisto->SetDirectory(nullptr);
-    entryhisto->Reset();
-
-    for (Long64_t i = 0; i < ents; ++i) {
-      chin.GetEntry(i);
-      double E_flux_units = nv->PartInfo(0)->fP.E() * (flux_in_GeV ? 1E-3 : 1);
-      xsechisto->Fill(E_flux_units, nv->Totcrs);
-      entryhisto->Fill(E_flux_units);
-    }
-
-    if (flux_in_GeV) {
-      flux_energy_to_MeV = 1E3;
-    } else {
-      flux_energy_to_MeV = 1;
-    }
-
-    xsechisto->Divide(entryhisto.get());
-
-    std::unique_ptr<TH1> ratehisto(
-        static_cast<TH1 *>(xsechisto->Clone("ratehisto")));
-    ratehisto->SetDirectory(nullptr);
-
-    ratehisto->Multiply(flux_histo);
-
-    double fatx = 1E-2 * (ratehisto->Integral() / flux_histo->Integral());
-
-    flux_fin->Close();
-
-    std::cout << "[INFO]: Calculated FATX/event from input file file as: "
-              << fatx << " pb/Nucleon" << std::endl;
-    return fatx;
-  } else {
-    std::cout << "[INFO]: Was not passed a flux file to calculat FATX"
-              << std::endl;
   }
 
-  // Have the histos already
-  if (fin->Get<TH1>("ratehisto") && fin->Get<TH1>("fluxhisto")) {
-    TH1 *ratehisto = fin->Get<TH1>("ratehisto");
-    flux_histo = static_cast<TH1 *>(
-        fin->Get<TH1>("fluxhisto")->Clone("fluxhisto_clone"));
-    flux_histo->SetDirectory(nullptr);
+  auto frpair = nvconv::GetFluxRateHistPairFromChain(chin);
+  if (frpair.second) {
 
-    double fatx = 1E-2 * (ratehisto->Integral() / flux_histo->Integral());
+    double fatx = 1E-2 * (frpair.first->Integral() / frpair.second->Integral());
 
-    std::cout
-        << "[INFO]: Calculated FATX/event from histograms in input file as: "
-        << fatx << " pb/Nucleon" << std::endl;
+    flux_hist = std::move(frpair.second);
+
+    std::cout << "[INFO]: Calculated FATX from histograms in input file as: "
+              << fatx << " pb/Nucleon" << std::endl;
+
     return fatx;
-  } else {
-    std::cout << "[INFO]: Cannot find ratehisto and fluxhisto in input file."
-              << std::endl;
   }
 
   return 1;
@@ -238,7 +179,7 @@ int main(int argc, char const *argv[]) {
   auto first_file = std::unique_ptr<TFile>(
       TFile::Open(files_to_read.front().c_str(), "READ"));
 
-  TH1 *flux_histo = nullptr;
+  std::unique_ptr<TH1> flux_histo = nullptr;
   bool isMonoE = false;
   int beam_pid = 0;
 
@@ -253,8 +194,8 @@ int main(int argc, char const *argv[]) {
   int molecule_A = nv->TargetA;
   int molecule_H = nv->TargetH;
 
-  auto gri = BuildRunInfo(ents_to_run, fatx, flux_histo, isMonoE, beam_pid,
-                          flux_energy_to_MeV);
+  auto gri = nvconv::BuildRunInfo(ents_to_run, fatx, flux_histo, isMonoE,
+                                  beam_pid, flux_energy_to_MeV);
 
   std::unique_ptr<HepMC3::Writer> output(
       NuHepMC::Writer::make_writer(file_to_write, gri));
@@ -298,7 +239,7 @@ int main(int argc, char const *argv[]) {
       std::cout << "\rConverting " << i << "/" << ents_to_process << std::flush;
     }
 
-    auto hepev = ToGenEvent(nv, gri);
+    auto hepev = nvconv::ToGenEvent(nv, gri);
 
     hepev.set_event_number(i);
     NuHepMC::add_attribute(hepev, "ifile.name", fname);

@@ -1,4 +1,4 @@
-add_library(nvconv STATIC nvconv.cxx)
+add_library(nvconv STATIC nvconv.cxx nvfatxtools.cxx)
 
 target_link_libraries(nvconv PUBLIC NEUT::IO NuHepMC::CPPUtils_static ROOT::RIO)
 target_include_directories(nvconv PUBLIC 
@@ -13,7 +13,7 @@ target_compile_definitions(nvconv PRIVATE
   PROJECT_VERSION_STR="${PROJECT_VERSION}")
 
 set_target_properties(nvconv PROPERTIES 
-  PUBLIC_HEADER nvconv.h)
+  PUBLIC_HEADER "nvconv.h;nvfatxtools.h")
 
 install(TARGETS nvconv
     EXPORT nvconv-targets
