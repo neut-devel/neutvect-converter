@@ -1,4 +1,4 @@
-add_library(nvconv STATIC nvconv.cxx nvfatxtools.cxx)
+add_library(nvconv SHARED nvconv.cxx nvfatxtools.cxx)
 
 target_link_libraries(nvconv PUBLIC NEUT::IO NuHepMC::CPPUtils_static ROOT::RIO)
 target_include_directories(nvconv PUBLIC 
