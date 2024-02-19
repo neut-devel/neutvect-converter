@@ -1,0 +1,56 @@
+@PACKAGE_INIT@
+
+if(TARGET nvconv)
+  set(nvconv_FOUND TRUE)
+  return()
+endif()
+
+set(nvconv_VERSION @PROJECT_VERSION@)
+set(nvconv_CXX_STANDARD 17)
+
+if(NOT TARGET NuHepMC::CPPUtils)
+  find_package(NuHepMC_CPPUtils REQUIRED)
+endif()
+
+if(NOT TARGET NEUT::IO)
+  find_package(neut @nvconv_MIN_NEUT_VERSION@ REQUIRED)
+endif()
+
+if(NOT TARGET ROOT::RIO)
+  find_package(ROOT 6 REQUIRED)
+endif()
+
+set(nvconv_FOUND TRUE)
+include(${CMAKE_CURRENT_LIST_DIR}/nvconvTargets.cmake)
+
+if(NOT TARGET nvconv)
+  set(nvconv_FOUND FALSE)
+  return()
+endif()
+
+get_filename_component(nvconv_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+message(STATUS "Found nvconv Version: ${nvconv_VERSION} in \"${nvconv_CMAKE_DIR}\"")
+
+find_path(nvconv_INCLUDE_DIR
+  NAMES nvconv.h
+  PATHS ${nvconv_CMAKE_DIR}/../../../include/
+)
+
+find_path(nvconv_LIB_DIR
+  NAMES libnvconv.so libnvconv.dylib
+  PATHS ${nvconv_CMAKE_DIR}/../../
+)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(nvconv
+    REQUIRED_VARS 
+      nvconv_INCLUDE_DIR 
+      nvconv_LIB_DIR
+    VERSION_VAR 
+      nvconv_VERSION
+)
+
+message(STATUS "Found nvconv Version: ${nvconv_VERSION} in \"${nvconv_CMAKE_DIR}\"")
+message(STATUS "    nvconv_INCLUDE_DIR: ${nvconv_INCLUDE_DIR}")
+message(STATUS "    nvconv_LIB_DIR: ${nvconv_LIB_DIR}")
+
