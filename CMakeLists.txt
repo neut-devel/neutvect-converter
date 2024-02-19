@@ -39,7 +39,7 @@ add_subdirectory(src)
 add_subdirectory(app)
 
 install(EXPORT nvconv-targets
-  FILE nvconvConfig.cmake
+  FILE nvconvTargets.cmake
   DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake/nvconv
 )
 
