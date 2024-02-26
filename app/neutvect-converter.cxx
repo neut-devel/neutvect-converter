@@ -81,15 +81,14 @@ void handleOpts(int argc, char const *argv[]) {
   }
 }
 
-double GetFATX(TFile *fin, TChain &chin, NeutVect *nv,
-               std::unique_ptr<TH1> &flux_hist, bool &isMonoE, int &beam_pid,
-               double &flux_energy_to_MeV) {
+double GetFATX(TChain &chin, NeutVect *nv, std::unique_ptr<TH1> &flux_hist,
+               bool &isMonoE, int &beam_pid, double &flux_energy_to_MeV) {
 
   // reset it so that the caller knows if it comes back set, it was set by this
   // call
   flux_hist = nullptr;
 
-  Long64_t ents = chin.GetEntries();
+  chin.GetEntries();
   chin.GetEntry(0);
   beam_pid = nv->PartInfo(0)->fPID;
 
@@ -165,7 +164,7 @@ int main(int argc, char const *argv[]) {
       0); // need to do this before opening the other file or... kablamo
 
   NeutVect *nv = nullptr;
-  auto branch_status = chin.SetBranchAddress("vectorbranch", &nv);
+  chin.SetBranchAddress("vectorbranch", &nv);
 
   if (skip >= ents) {
     std::cout << "Skipping " << skip << ", but only have " << ents
@@ -184,7 +183,7 @@ int main(int argc, char const *argv[]) {
   int beam_pid = 0;
 
   double flux_energy_to_MeV = 1E3;
-  double fatx = GetFATX(first_file.get(), chin, nv, flux_histo, isMonoE,
+  double fatx = GetFATX(chin, nv, flux_histo, isMonoE,
                         beam_pid, flux_energy_to_MeV);
   first_file->Close();
   first_file = nullptr;
