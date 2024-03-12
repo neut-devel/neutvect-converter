@@ -24,6 +24,6 @@ std::shared_ptr<HepMC3::GenRunInfo>
 BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
              std::unique_ptr<TH1> &flux_histo, bool &isMonoE, int beam_pid,
              double flux_to_MeV = 1);
-HepMC3::GenEvent ToGenEvent(NeutVect *nv,
-                            std::shared_ptr<HepMC3::GenRunInfo> gri);
-}
+std::shared_ptr<HepMC3::GenEvent>
+ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri);
+} // namespace nvconv

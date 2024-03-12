@@ -240,11 +240,11 @@ int main(int argc, char const *argv[]) {
 
     auto hepev = nvconv::ToGenEvent(nv, gri);
 
-    hepev.set_event_number(i);
-    NuHepMC::add_attribute(hepev, "ifile.name", fname);
-    NuHepMC::add_attribute(hepev, "ifile.entry", fentry++);
+    hepev->set_event_number(i);
+    NuHepMC::add_attribute(*hepev, "ifile.name", fname);
+    NuHepMC::add_attribute(*hepev, "ifile.entry", fentry++);
 
-    output->write_event(hepev);
+    output->write_event(*hepev);
   }
   std::cout << "\rConverting " << ents_to_process << "/" << ents_to_process
             << std::endl;

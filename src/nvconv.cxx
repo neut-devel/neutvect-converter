@@ -9,6 +9,7 @@
 #include "HepMC3/Print.h"
 #endif
 
+#include <memory>
 #include <set>
 #include <utility>
 
@@ -245,12 +246,11 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
 
   // G.C.1 Signalling Followed Conventions
   std::vector<std::string> conventions = {
-      "G.C.1", "G.C.4", "G.C.5", "E.C.1",
-      "E.C.2", "V.C.1", "P.C.1", "P.C.2",
+      "G.C.1", "G.C.4", "G.C.5", "E.C.1", "E.C.2", "V.C.1", "P.C.1", "P.C.2",
   };
 
   // G.C.2 File Exposure (Standalone)
-  if(nevents){
+  if (nevents) {
     NuHepMC::GC2::SetExposureNEvents(run_info, nevents);
     conventions.push_back("G.C.2");
   }
@@ -299,16 +299,17 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
   return run_info;
 }
 
-HepMC3::GenEvent ToGenEvent(NeutVect *nv,
-                            std::shared_ptr<HepMC3::GenRunInfo> gri) {
+std::shared_ptr<HepMC3::GenEvent>
+ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
 
 #ifdef NEUTCONV_DEBUG
   std::cout << ">>>>>>>>>>>>>>>ToGenEvent" << std::endl;
   nv->Dump();
 #endif
 
-  HepMC3::GenEvent evt(HepMC3::Units::MEV, HepMC3::Units::CM);
-  evt.set_run_info(gri);
+  auto evt =
+      std::make_shared<HepMC3::GenEvent>(HepMC3::Units::MEV, HepMC3::Units::CM);
+  evt->set_run_info(gri);
 
   HepMC3::GenVertexPtr IAVertex =
       std::make_shared<HepMC3::GenVertex>(HepMC3::FourVector{});
@@ -542,27 +543,27 @@ HepMC3::GenEvent ToGenEvent(NeutVect *nv,
         "neutvect-converter: [ERROR]: fsivertex had no incoming particles.");
   }
 
-  evt.add_vertex(IAVertex);
-  evt.add_vertex(primvertex);
-  evt.add_vertex(fsivertex);
+  evt->add_vertex(IAVertex);
+  evt->add_vertex(primvertex);
+  evt->add_vertex(fsivertex);
 
   // E.C.1
-  evt.weight("CV") = 1;
+  evt->weight("CV") = 1;
 
   // E.C.4
   static double const cm2_to_pb = 1E36;
 
   // E.C.2
-  NuHepMC::EC2::SetTotalCrossSection(evt, nv->Totcrs * 1E-38 * cm2_to_pb);
+  NuHepMC::EC2::SetTotalCrossSection(*evt, nv->Totcrs * 1E-38 * cm2_to_pb);
   // E.R.5
-  NuHepMC::ER5::SetLabPosition(evt, std::vector<double>{0, 0, 0, 0});
+  NuHepMC::ER5::SetLabPosition(*evt, std::vector<double>{0, 0, 0, 0});
 
-  NuHepMC::ER3::SetProcessID(evt, GetEC1Channel(nv->Mode));
+  NuHepMC::ER3::SetProcessID(*evt, GetEC1Channel(nv->Mode));
 
   NuHepMC::PC2::SetRemnantParticleNumber(nuclear_remnant_internal,
                                          nuclear_remnant_PDG);
 
-  AddNEUTPassthrough(evt, parts, nv);
+  AddNEUTPassthrough(*evt, parts, nv);
 
 #ifdef NEUTCONV_DEBUG
   HepMC3::Print::listing(evt);
