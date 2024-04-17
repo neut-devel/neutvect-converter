@@ -457,6 +457,15 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
     if (!NuHepPartStatus) {
       std::cout << "[ERROR]: Failed to convert particle status for particle: "
                 << i << std::endl;
+
+      for (int i = 0; i < npart; ++i) {
+        auto pinfo = nv->PartInfo(i);
+        std::cout << "p[" << i << "]- pid: " << pinfo->fPID
+                  << ", prim: " << (i < nprimary)
+                  << ", status: " << pinfo->fStatus
+                  << ", alive: " << pinfo->fIsAlive << std::endl;
+      }
+
       abort();
     }
 
