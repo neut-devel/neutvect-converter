@@ -575,7 +575,7 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
   AddNEUTPassthrough(*evt, parts, nv);
 
 #ifdef NEUTCONV_DEBUG
-  HepMC3::Print::listing(evt);
+  HepMC3::Print::listing(*evt);
   std::cout << "<<<<<<<<<<<<<<<ToGenEvent" << std::endl;
 #endif
 
