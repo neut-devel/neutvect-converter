@@ -26,12 +26,14 @@ find_package(ROOT 6 REQUIRED)
 set(nvconv_MIN_NEUT_VERSION 5.5.0)
 find_package(NEUT ${nvconv_MIN_NEUT_VERSION} REQUIRED)
 
+find_package(HepMC3 3.3.0 REQUIRED)
+
 include(CPM)
 CPMAddPackage(
     NAME NuHepMC_CPPUtils
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
     GIT_TAG main
-    OPTIONS "BUILTIN_HEPMC3 ON"
+    OPTIONS "BUILTIN_HEPMC3 OFF"
 )
 
 add_subdirectory(src)
