@@ -26,6 +26,7 @@ find_package(ROOT 6 REQUIRED)
 set(nvconv_MIN_NEUT_VERSION 5.5.0)
 find_package(NEUT ${nvconv_MIN_NEUT_VERSION} REQUIRED)
 
+find_package(Protobuf 2.4 QUIET)
 find_package(HepMC3 3.2.6 REQUIRED)
 
 include(CPM)
