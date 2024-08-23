@@ -153,9 +153,10 @@ void AddNEUTPassthrough(HepMC3::GenEvent &evt,
 
   for (int i = 0; i < npart; ++i) {
     pinfo = nv->PartInfo(i);
-    NuHepMC::add_attribute(parts[i], "NEUT.i", i);
-    NuHepMC::add_attribute(parts[i], "NEUT.fStatus", pinfo->fStatus);
-    NuHepMC::add_attribute(parts[i], "NEUT.fIsAlive", pinfo->fIsAlive);
+    if(parts[i]->in_event()){
+        NuHepMC::add_attribute(parts[i], "NEUT.i", i);
+        NuHepMC::add_attribute(parts[i], "NEUT.fStatus", pinfo->fStatus);
+        NuHepMC::add_attribute(parts[i], "NEUT.fIsAlive", pinfo->fIsAlive);}
   }
 }
 
@@ -317,35 +318,34 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
 
   bool isbound = nv->Ibound;
 
-  std::set<int> not_bound_modes = {16, -16, 36, -36};
+  std::set<int> not_bound_modes = {16, 15, -16, -15, 36, 35, -36, -35};
   if (!isbound && (not_bound_modes.count(nv->Mode))) {
     // Correct confusing 'isbound == false' for certain modes
     isbound = true;
   }
 
-  int nuclear_PDG = isbound
-                        ? 1000000000 + nv->TargetZ * 10000 + nv->TargetA * 10
-                        : 1000010010;
-
-  HepMC3::GenParticlePtr target_nucleus = std::make_shared<HepMC3::GenParticle>(
-      HepMC3::FourVector{0, 0, 0, 0}, nuclear_PDG,
-      NuHepMC::ParticleStatus::Target);
-
+  int nuclear_PDG = 1000000000 + nv->TargetZ * 10000 + nv->TargetA * 10;
   int nuclear_remnant_PDG = nuclear_PDG;
-  HepMC3::GenParticlePtr nuclear_remnant_internal =
-      std::make_shared<HepMC3::GenParticle>(
-          HepMC3::FourVector{0, 0, 0, 0},
-          NuHepMC::ParticleNumber::NuclearRemnant,
-          NuHepMC::ParticleStatus::DocumentationLine);
+  HepMC3::GenParticlePtr nuclear_remnant_internal = nullptr;
+  HepMC3::GenParticlePtr nuclear_remnant_external = nullptr;
+  if (isbound) {
 
-  HepMC3::GenParticlePtr nuclear_remnant_external =
-      std::make_shared<HepMC3::GenParticle>(
-          HepMC3::FourVector{0, 0, 0, 0},
-          NuHepMC::ParticleNumber::NuclearRemnant,
-          NuHepMC::ParticleStatus::UndecayedPhysical);
+    HepMC3::GenParticlePtr target_nucleus =
+        std::make_shared<HepMC3::GenParticle>(HepMC3::FourVector{0, 0, 0, 0},
+                                              nuclear_PDG,
+                                              NuHepMC::ParticleStatus::Target);
 
-  IAVertex->add_particle_in(target_nucleus);
-  IAVertex->add_particle_out(nuclear_remnant_internal);
+    nuclear_remnant_internal = std::make_shared<HepMC3::GenParticle>(
+        HepMC3::FourVector{0, 0, 0, 0}, NuHepMC::ParticleNumber::NuclearRemnant,
+        NuHepMC::ParticleStatus::DocumentationLine);
+
+    nuclear_remnant_external = std::make_shared<HepMC3::GenParticle>(
+        HepMC3::FourVector{0, 0, 0, 0}, NuHepMC::ParticleNumber::NuclearRemnant,
+        NuHepMC::ParticleStatus::UndecayedPhysical);
+
+    IAVertex->add_particle_in(target_nucleus);
+    IAVertex->add_particle_out(nuclear_remnant_internal);
+  }
 
   // E.R.5
   HepMC3::GenVertexPtr primvertex =
@@ -366,17 +366,17 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
   // have added them to the event.
   std::vector<HepMC3::GenParticlePtr> parts;
 
-  for (int i = 0; i < npart; ++i) {
-    pinfo = nv->PartInfo(i);
+  for (int p_it = 0; p_it < npart; ++p_it) {
+    pinfo = nv->PartInfo(p_it);
 
-    bool isprim = i < nprimary;
+    bool isprim = p_it < nprimary;
 
     int NuHepPartStatus = 0;
 
     switch (pinfo->fStatus) {
     case -1: {
-      NuHepPartStatus = (i == 0) ? NuHepMC::ParticleStatus::IncomingBeam
-                                 : NuHepMC::ParticleStatus::StruckNucleon;
+      NuHepPartStatus = (p_it == 0) ? NuHepMC::ParticleStatus::IncomingBeam
+                                    : NuHepMC::ParticleStatus::StruckNucleon;
       break;
     }
     case 0: {
@@ -455,18 +455,41 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
     }
 
     if (!NuHepPartStatus) {
-      std::cout << "[ERROR]: Failed to convert particle status for particle: "
-                << i << std::endl;
 
-      for (int i = 0; i < npart; ++i) {
-        auto pinfo = nv->PartInfo(i);
-        std::cout << "p[" << i << "]- pid: " << pinfo->fPID
-                  << ", prim: " << (i < nprimary)
-                  << ", status: " << pinfo->fStatus
-                  << ", alive: " << pinfo->fIsAlive << std::endl;
+      if ((std::abs(nv->Mode) == 15) ||
+          (std::abs(nv->Mode) == 35)) { // special case for diffractive
+        switch (p_it) {
+        case 0: {
+          NuHepPartStatus = NuHepMC::ParticleStatus::IncomingBeam;
+          break;
+        }
+        case 1: {
+          NuHepPartStatus = NuHepMC::ParticleStatus::StruckNucleon;
+          break;
+        }
+        default: {
+          NuHepPartStatus = NuHepMC::ParticleStatus::UndecayedPhysical;
+          break;
+        }
+        }
+      } else {
+
+        std::stringstream ss;
+        ss << "[ERROR]: Failed to convert particle status for particle: "
+           << p_it << "\n";
+
+        for (int p_it = 0; p_it < npart; ++p_it) {
+          auto pinfo = nv->PartInfo(p_it);
+          ss << "p[" << p_it << "]- pid: " << pinfo->fPID
+             << ", prim: " << (p_it < nprimary)
+             << ", status: " << pinfo->fStatus << ", alive: " << pinfo->fIsAlive
+             << "\n";
+        }
+
+        std::cout << ss.str() << std::endl;
+        nv->Dump();
+        throw ss.str();
       }
-
-      abort();
     }
 
     TLorentzVector fmom;
@@ -479,7 +502,7 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
     part->set_generated_mass(fmom.M());
 
 #ifdef NEUTCONV_DEBUG
-    std::cout << "Processing NEUT particle(" << i << "/" << npart
+    std::cout << "Processing NEUT particle(" << p_it << "/" << npart
               << ", nprim:" << nprimary << ") pid: " << pinfo->fPID
               << ", status: " << pinfo->fStatus
               << " isalive: " << pinfo->fIsAlive << std::endl;
@@ -492,17 +515,23 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
       std::cout << "\t->Added as /in/ to primvertex" << std::endl;
 #endif
     } else if (NuHepPartStatus == NuHepMC::ParticleStatus::StruckNucleon) {
-      primvertex->add_particle_in(part);
-      IAVertex->add_particle_out(part);
+      if (isbound) {
+        IAVertex->add_particle_out(part);
 
-      if (part->pid() == 2212) {
-        nuclear_remnant_PDG -= (1 * 10000 + 1 * 10);
-      } else {
-        nuclear_remnant_PDG -= (0 * 10000 + 1 * 10);
+        if (part->pid() == 2212) {
+          nuclear_remnant_PDG -= (1 * 10000 + 1 * 10);
+        } else {
+          nuclear_remnant_PDG -= (0 * 10000 + 1 * 10);
+        }
+      } else { // use stuck nucleon as target for unbound interactions
+        part->set_status(NuHepMC::ParticleStatus::Target);
       }
+      primvertex->add_particle_in(part);
 
 #ifdef NEUTCONV_DEBUG
-      std::cout << "\t->Added as /out/ from IAvertex" << std::endl;
+      if (isbound) {
+        std::cout << "\t->Added as /out/ from IAvertex" << std::endl;
+      }
       std::cout << "\t->Added as /in/ to primvertex" << std::endl;
 #endif
     } else if (NuHepPartStatus == NuHepMC::ParticleStatus::UndecayedPhysical) {
@@ -510,18 +539,24 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
         auto part_copy = std::make_shared<HepMC3::GenParticle>(part->data());
         part_copy->set_status(NuHepMC::ParticleStatus::DocumentationLine);
         primvertex->add_particle_out(part_copy);
-        fsivertex->add_particle_in(part_copy);
+        if (isbound) {
+          fsivertex->add_particle_in(part_copy);
+        }
 #ifdef NEUTCONV_DEBUG
         std::cout << "\t->Copied particle with status: "
                   << NuHepMC::ParticleStatus::DocumentationLine << std::endl;
         std::cout << "\t\t->Added as /out/ from primvertex" << std::endl;
-        std::cout << "\t\t->Added as /in/ to fsivertex" << std::endl;
+        if (isbound) {
+          std::cout << "\t\t->Added as /in/ to fsivertex" << std::endl;
+        }
 #endif
       }
-      fsivertex->add_particle_out(part);
+      if (isbound) {
+        fsivertex->add_particle_out(part);
 #ifdef NEUTCONV_DEBUG
-      std::cout << "\t->Added as /out/ from fsivertex" << std::endl;
+        std::cout << "\t->Added as /out/ from fsivertex" << std::endl;
 #endif
+      }
     } else if ((NuHepPartStatus == NuHepMC::ParticleStatus::DecayedPhysical) ||
                (NuHepPartStatus ==
                 NuHepMC::ParticleStatus::NEUT::PauliBlocked) ||
@@ -541,20 +576,25 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
       std::cout << "\t->Added as /in/ to fsivertex" << std::endl;
 #endif
     } else {
-      std::cout << "[ERROR]: Failed to find vertex for particle: " << (i + 1)
-                << std::endl;
-      abort();
+      std::stringstream ss;
+      ss << "[ERROR]: Failed to find vertex for particle: " << (p_it + 1);
+      std::cout << ss.str() << std::endl;
+      throw ss.str();
     }
   }
 
-  if (!fsivertex->particles_in().size()) {
+  if (isbound && !fsivertex->particles_in().size()) {
     throw std::runtime_error(
         "neutvect-converter: [ERROR]: fsivertex had no incoming particles.");
   }
 
-  evt->add_vertex(IAVertex);
+  if (isbound) {
+    evt->add_vertex(IAVertex);
+  }
   evt->add_vertex(primvertex);
-  evt->add_vertex(fsivertex);
+  if (isbound) {
+    evt->add_vertex(fsivertex);
+  }
 
   // E.C.1
   evt->weight("CV") = 1;
@@ -569,8 +609,10 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
 
   NuHepMC::ER3::SetProcessID(*evt, GetEC1Channel(nv->Mode));
 
-  NuHepMC::PC2::SetRemnantParticleNumber(nuclear_remnant_internal,
-                                         nuclear_remnant_PDG);
+  if (isbound) {
+    NuHepMC::PC2::SetRemnantParticleNumber(nuclear_remnant_internal,
+                                           nuclear_remnant_PDG);
+  }
 
   AddNEUTPassthrough(*evt, parts, nv);
 
