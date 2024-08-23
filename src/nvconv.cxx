@@ -153,10 +153,11 @@ void AddNEUTPassthrough(HepMC3::GenEvent &evt,
 
   for (int i = 0; i < npart; ++i) {
     pinfo = nv->PartInfo(i);
-    if(parts[i]->in_event()){
-        NuHepMC::add_attribute(parts[i], "NEUT.i", i);
-        NuHepMC::add_attribute(parts[i], "NEUT.fStatus", pinfo->fStatus);
-        NuHepMC::add_attribute(parts[i], "NEUT.fIsAlive", pinfo->fIsAlive);}
+    if (parts[i]->in_event()) {
+      NuHepMC::add_attribute(parts[i], "NEUT.i", i);
+      NuHepMC::add_attribute(parts[i], "NEUT.fStatus", pinfo->fStatus);
+      NuHepMC::add_attribute(parts[i], "NEUT.fIsAlive", pinfo->fIsAlive);
+    }
   }
 }
 
@@ -454,42 +455,40 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
     }
     }
 
+    if ((std::abs(nv->Mode) == 15) ||
+        (std::abs(nv->Mode) == 35)) { // special case for diffractive
+      switch (p_it) {
+      case 0: {
+        NuHepPartStatus = NuHepMC::ParticleStatus::IncomingBeam;
+        break;
+      }
+      case 1: {
+        NuHepPartStatus = NuHepMC::ParticleStatus::StruckNucleon;
+        break;
+      }
+      default: {
+        NuHepPartStatus = NuHepMC::ParticleStatus::UndecayedPhysical;
+        break;
+      }
+      }
+    }
+
     if (!NuHepPartStatus) {
 
-      if ((std::abs(nv->Mode) == 15) ||
-          (std::abs(nv->Mode) == 35)) { // special case for diffractive
-        switch (p_it) {
-        case 0: {
-          NuHepPartStatus = NuHepMC::ParticleStatus::IncomingBeam;
-          break;
-        }
-        case 1: {
-          NuHepPartStatus = NuHepMC::ParticleStatus::StruckNucleon;
-          break;
-        }
-        default: {
-          NuHepPartStatus = NuHepMC::ParticleStatus::UndecayedPhysical;
-          break;
-        }
-        }
-      } else {
+      std::stringstream ss;
+      ss << "[ERROR]: Failed to convert particle status for particle: " << p_it
+         << "\n";
 
-        std::stringstream ss;
-        ss << "[ERROR]: Failed to convert particle status for particle: "
-           << p_it << "\n";
-
-        for (int p_it = 0; p_it < npart; ++p_it) {
-          auto pinfo = nv->PartInfo(p_it);
-          ss << "p[" << p_it << "]- pid: " << pinfo->fPID
-             << ", prim: " << (p_it < nprimary)
-             << ", status: " << pinfo->fStatus << ", alive: " << pinfo->fIsAlive
-             << "\n";
-        }
-
-        std::cout << ss.str() << std::endl;
-        nv->Dump();
-        throw ss.str();
+      for (int p_it = 0; p_it < npart; ++p_it) {
+        auto pinfo = nv->PartInfo(p_it);
+        ss << "p[" << p_it << "]- pid: " << pinfo->fPID
+           << ", prim: " << (p_it < nprimary) << ", status: " << pinfo->fStatus
+           << ", alive: " << pinfo->fIsAlive << "\n";
       }
+
+      std::cout << ss.str() << std::endl;
+      nv->Dump();
+      throw ss.str();
     }
 
     TLorentzVector fmom;
