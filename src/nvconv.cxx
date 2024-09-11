@@ -259,7 +259,7 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
 
   // G.C.4 Cross Section Units and Target Scaling
   NuHepMC::GC4::SetCrossSectionUnits(run_info, "pb",
-                                     "PerTargetMolecularNucleon");
+                                     "PerTargetNucleon");
 
   // G.C.5 Flux-averaged Total Cross Section
   NuHepMC::GC5::SetFluxAveragedTotalXSec(run_info,

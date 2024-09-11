@@ -30,7 +30,7 @@ find_package(Protobuf 2.4 QUIET)
 find_package(HepMC3 3.2.6 REQUIRED)
 
 include(CPM)
-CPMAddPackage(
+CPMFindPackage(
     NAME NuHepMC_CPPUtils
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
     GIT_TAG main
