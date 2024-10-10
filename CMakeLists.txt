@@ -29,11 +29,11 @@ find_package(NEUT ${nvconv_MIN_NEUT_VERSION} REQUIRED)
 find_package(Protobuf 2.4 QUIET)
 find_package(HepMC3 3.2.6 REQUIRED)
 
-include(CPM)
+include(get_cpm)
 CPMFindPackage(
     NAME NuHepMC_CPPUtils
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
-    GIT_TAG main
+    GIT_TAG v1-RC1
     OPTIONS "BUILTIN_HEPMC3 OFF"
 )
 
