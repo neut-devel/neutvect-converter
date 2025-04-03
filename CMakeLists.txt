@@ -32,9 +32,9 @@ find_package(HepMC3 3.2.6 REQUIRED)
 include(get_cpm)
 CPMFindPackage(
     NAME NuHepMC_CPPUtils
-    VERSION 0.9.3
+    VERSION 0.9.5
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
-    GIT_TAG v1-RC4
+    GIT_TAG v1-RC7
     OPTIONS "BUILTIN_HEPMC3 ON"
 )
 
