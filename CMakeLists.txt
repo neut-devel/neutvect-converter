@@ -26,8 +26,8 @@ find_package(ROOT 6 REQUIRED)
 set(nvconv_MIN_NEUT_VERSION 5.5.0)
 find_package(NEUT ${nvconv_MIN_NEUT_VERSION} REQUIRED)
 
-find_package(Protobuf 2.4 QUIET)
-find_package(HepMC3 3.2.6 REQUIRED)
+# find_package(Protobuf 2.4 QUIET)
+# find_package(HepMC3 3.2.6 REQUIRED)
 
 include(get_cpm)
 CPMFindPackage(
@@ -35,7 +35,7 @@ CPMFindPackage(
     VERSION 0.9.5
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
     GIT_TAG v1-RC7
-    OPTIONS "BUILTIN_HEPMC3 ON"
+    OPTIONS "NuHepMC_CPPUtils_BUILTIN_HEPMC3 ON"
 )
 
 add_subdirectory(src)
