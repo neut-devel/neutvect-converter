@@ -1,6 +1,11 @@
 add_library(nvconv SHARED nvconv.cxx nvfatxtools.cxx)
 
-target_link_libraries(nvconv PUBLIC NEUT::All NuHepMC::CPPUtils ROOT::RIO)
+if(NEUT_VERSION VERSION_LESS 6)
+  target_link_libraries(nvconv PUBLIC NEUT::IO NuHepMC::CPPUtils ROOT::RIO)
+else()
+  target_link_libraries(nvconv PUBLIC NEUT::All NuHepMC::CPPUtils ROOT::RIO)
+endif()
+
 target_include_directories(nvconv PUBLIC 
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>)
