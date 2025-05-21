@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 find_program(CMAKE_C_COMPILER NAMES $ENV{CC} gcc PATHS ENV PATH NO_DEFAULT_PATH)
 find_program(CMAKE_CXX_COMPILER NAMES $ENV{CXX} g++ PATHS ENV PATH NO_DEFAULT_PATH)
 
-project(nvconv VERSION 0.9.6)
+project(nvconv VERSION 0.9.7)
 
 set(CMAKE_CXX_STANDARD 17)
 cmake_policy(SET CMP0095 NEW)
@@ -39,9 +39,9 @@ include(get_cpm)
 
 CPMFindPackage(
     NAME NuHepMC_CPPUtils
-    VERSION 0.9.6
+    VERSION 0.9.8
     GIT_REPOSITORY "https://github.com/NuHepMC/cpputils.git"
-    GIT_TAG v1-RC8
+    GIT_TAG v1-RC11
     OPTIONS "NuHepMC_CPPUtils_BUILTIN_HEPMC3 ${nvconv_BUILTIN_HEPMC3}"
 )
 

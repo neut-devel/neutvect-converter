@@ -210,7 +210,7 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
         "single target nucleon from the target nucleus ground state."}},
   };
 
-  NuHepMC::GR5::WriteVertexStatusIDDefinitions(run_info, VertexStatuses);
+  NuHepMC::GR9::WriteVertexStatusIDDefinitions(run_info, VertexStatuses);
 
   NuHepMC::StatusCodeDescriptors ParticleStatuses = {
       {NuHepMC::ParticleStatus::UndecayedPhysical,
@@ -239,30 +239,23 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
       {NuHepMC::ParticleStatus::NEUT::SecondaryInteraction,
        {"SecondaryInteraction", "This particle subsequently underwent a "
                                 "secondary interaction in the detector"}}};
-  NuHepMC::GR6::WriteParticleStatusIDDefinitions(run_info, ParticleStatuses);
+  NuHepMC::GR10::WriteParticleStatusIDDefinitions(run_info, ParticleStatuses);
 
   // G.R.7 Event Weights
   NuHepMC::GR7::SetWeightNames(run_info, {
                                              "CV",
                                          });
 
-  // G.C.1 Signalling Followed Conventions
+  // G.R.4 Signalling Followed Conventions
   std::vector<std::string> conventions = {
-      "G.C.1", "G.C.4", "G.C.5", "E.C.1", "E.C.2", "V.C.1", "P.C.1", "P.C.2",
+      "G.C.2", "E.C.1", "E.C.2", "V.C.1", "P.C.1", "P.C.2",
   };
 
-  // G.C.2 File Exposure (Standalone)
-  if (nevents) {
-    NuHepMC::GC2::SetExposureNEvents(run_info, nevents);
-    conventions.push_back("G.C.2");
-  }
+  // G.R.6 Cross Section Units and Target Scaling
+  NuHepMC::GR6::SetCrossSectionUnits(run_info, "pb", "PerNucleon");
 
-  // G.C.4 Cross Section Units and Target Scaling
-  NuHepMC::GC4::SetCrossSectionUnits(run_info, "pb",
-                                     "PerTargetNucleon");
-
-  // G.C.5 Flux-averaged Total Cross Section
-  NuHepMC::GC5::SetFluxAveragedTotalXSec(run_info,
+  // G.C.2 Flux-averaged Total Cross Section
+  NuHepMC::GC2::SetFluxAveragedTotalXSec(run_info,
                                          flux_averaged_total_cross_section);
 
   if (flux_hist || isMonoE) {
@@ -270,12 +263,12 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
 
     if (isMonoE) {
 
-      NuHepMC::GC7::WriteBeamUnits(run_info, "MEV");
-      NuHepMC::GC7::SetMonoEnergeticBeamType(run_info);
+      NuHepMC::GC4::WriteBeamUnits(run_info, "MEV");
+      NuHepMC::GC4::SetMonoEnergeticBeamType(run_info);
 
     } else {
 
-      NuHepMC::GC7::SetHistogramBeamType(run_info);
+      NuHepMC::GC4::SetHistogramBeamType(run_info);
 
       std::vector<double> bin_edges;
       std::vector<double> bin_content;
@@ -288,15 +281,15 @@ BuildRunInfo(int nevents, double flux_averaged_total_cross_section,
         bin_content.push_back(flux_hist->GetBinContent(i + 1));
       }
 
-      NuHepMC::GC7::WriteBeamEnergyHistogram(run_info, beam_pid, bin_edges,
+      NuHepMC::GC4::WriteBeamEnergyHistogram(run_info, beam_pid, bin_edges,
                                              bin_content, false);
-      NuHepMC::GC7::WriteBeamUnits(
+      NuHepMC::GC4::WriteBeamUnits(
           run_info, "MEV", std::string(flux_hist->GetYaxis()->GetTitle()));
     }
   }
 
-  // G.C.1 Signalling Followed Conventions
-  NuHepMC::GC1::SetConventions(run_info, conventions);
+  // G.R.4 Signalling Followed Conventions
+  NuHepMC::GR4::SetConventions(run_info, conventions);
 
   return run_info;
 }
@@ -609,8 +602,9 @@ ToGenEvent(NeutVect *nv, std::shared_ptr<HepMC3::GenRunInfo> gri) {
   NuHepMC::ER3::SetProcessID(*evt, GetEC1Channel(nv->Mode));
 
   if (isbound) {
-    NuHepMC::PC2::SetRemnantParticleNumber(nuclear_remnant_internal,
-                                           nuclear_remnant_PDG);
+    NuHepMC::PC2::SetRemnantNucleusParticleNumber(
+        nuclear_remnant_internal, (nuclear_remnant_PDG / 10000) % 1000,
+        (nuclear_remnant_PDG / 10) % 1000);
   }
 
   AddNEUTPassthrough(*evt, parts, nv);
