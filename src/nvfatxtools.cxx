@@ -1,6 +1,9 @@
 #include "nvfatxtools.h"
 
+#include "TChainElement.h"
 #include "TFile.h"
+
+#include <sstream>
 
 namespace nvconv {
 
@@ -23,7 +26,7 @@ bool isMono(TChain &chin, NeutVect *nv, Long64_t ntocheck) {
 std::unique_ptr<TH1> GetHistFromFile(std::string const &flux_file,
                                      std::string const &flux_histname) {
 
-  if(!flux_file.length() || !flux_histname.length()){
+  if (!flux_file.length() || !flux_histname.length()) {
     return nullptr;
   }
 
@@ -93,19 +96,54 @@ std::optional<double> GetFATXFromFluxHist(TChain &chin, NeutVect *nv,
 
 std::pair<std::unique_ptr<TH1>, std::unique_ptr<TH1>>
 GetFluxRateHistPairFromChain(TChain &chin) {
-  chin.GetEntry(0);
 
-  if (chin.GetFile()->Get<TH1>("ratehisto") &&
-      chin.GetFile()->Get<TH1>("fluxhisto")) {
-    std::unique_ptr<TH1> rhc(static_cast<TH1 *>(
-        chin.GetFile()->Get<TH1>("ratehisto")->Clone("ratehisto_clone")));
-    rhc->SetDirectory(nullptr);
-    std::unique_ptr<TH1> fhc(static_cast<TH1 *>(
-        chin.GetFile()->Get<TH1>("fluxhisto")->Clone("fluxhisto_clone")));
-    fhc->SetDirectory(nullptr);
-    return {std::move(rhc), std::move(fhc)};
+  auto files = chin.GetListOfFiles();
+
+  std::pair<std::unique_ptr<TH1>, std::unique_ptr<TH1>> fluxrate{nullptr,
+                                                                 nullptr};
+
+  for (int fi = 0; fi < files->GetEntries(); ++fi) {
+    auto fname = static_cast<TChainElement *>(files->At(fi))->GetTitle();
+
+    TFile fin(fname, "READ");
+    auto rate = fin.Get<TH1>("ratehisto");
+    auto flux = fin.Get<TH1>("fluxhisto");
+    auto tree = fin.Get<TTree>("neuttree");
+
+    if (!rate || !flux) {
+      std::stringstream ss;
+      ss << "Failed to open flux(" << bool(flux) << ") and/or rate("
+         << bool(rate) << ") histograms from file in chain: " << fname
+         << std::endl;
+      throw std::runtime_error(ss.str());
+    }
+
+    if (!tree) {
+      std::stringstream ss;
+      ss << "Failed to find neuttree in file in chain: " << fname << std::endl;
+      throw std::runtime_error(ss.str());
+    }
+
+    double nevents =
+        tree->GetEntries(); // weight the contribution to the average by the
+                            // number of events in the file.
+
+    if (!fluxrate.first) {
+      fluxrate.first =
+          std::unique_ptr<TH1>(static_cast<TH1 *>(rate->Clone("ratehisto_c")));
+      fluxrate.second =
+          std::unique_ptr<TH1>(static_cast<TH1 *>(flux->Clone("fluxhisto_c")));
+      fluxrate.first->Scale(nevents);
+      fluxrate.second->Scale(nevents);
+      fluxrate.first->SetDirectory(nullptr);
+      fluxrate.second->SetDirectory(nullptr);
+    } else {
+      fluxrate.first->Add(rate, nevents);
+      fluxrate.second->Add(flux, nevents);
+    }
   }
-  return {nullptr, nullptr};
+
+  return fluxrate;
 }
 
 } // namespace nvconv

@@ -131,8 +131,10 @@ double GetFATX(TChain &chin, NeutVect *nv, std::unique_ptr<TH1> &flux_hist,
 
     flux_hist = std::move(frpair.second);
 
-    std::cout << "[INFO]: Calculated FATX from histograms in input file as: "
-              << fatx << " pb/Nucleon" << std::endl;
+    std::cout
+        << "[INFO]: Calculated FATX from histograms in input file as: 1E-2 * "
+        << frpair.first->Integral() << "/" << flux_hist->Integral() << " = "
+        << fatx << " pb/Nucleon" << std::endl;
 
     return fatx;
   }
@@ -183,8 +185,8 @@ int main(int argc, char const *argv[]) {
   int beam_pid = 0;
 
   double flux_energy_to_MeV = 1E3;
-  double fatx = GetFATX(chin, nv, flux_histo, isMonoE,
-                        beam_pid, flux_energy_to_MeV);
+  double fatx =
+      GetFATX(chin, nv, flux_histo, isMonoE, beam_pid, flux_energy_to_MeV);
   first_file->Close();
   first_file = nullptr;
 
