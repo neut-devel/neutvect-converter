@@ -161,9 +161,11 @@ int main(int argc, char const *argv[]) {
     }
   }
 
+  chin.SetAutoDelete(true);
+
   Long64_t ents = chin.GetEntries();
-  chin.GetEntry(
-      0); // need to do this before opening the other file or... kablamo
+  // need to do this before opening the other file or... kablamo
+  chin.GetEntry(0);
 
   NeutVect *nv = nullptr;
   chin.SetBranchAddress("vectorbranch", &nv);
